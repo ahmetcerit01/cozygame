@@ -1,0 +1,19 @@
+{
+    "name": "CozyLab.Puzzle.Editor",
+    "rootNamespace": "CozyLab.Puzzle.Editor",
+    "references": [
+        "CozyLab.Puzzle.Core",
+        "CozyLab.Puzzle"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
