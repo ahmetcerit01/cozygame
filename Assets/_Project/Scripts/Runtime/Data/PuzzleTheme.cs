@@ -64,6 +64,16 @@ namespace CozyLab.Puzzle.Data
         public Color overlayDimColor = new Color(0.141f, 0.200f, 0.251f, 0.3f);
         public Color cardColor = new Color(0.988f, 0.996f, 0.996f);
 
+        [Header("Home / Lab surfaces")]
+        public Color deskMatColor = new Color(0.878f, 0.933f, 0.925f);
+        public Color deskGridColor = new Color(0.231f, 0.290f, 0.353f, 0.045f);
+        public Color labWallColor = new Color(0.871f, 0.929f, 0.922f);
+        public Color labBenchColor = new Color(0.976f, 0.965f, 0.945f);
+        public Color labBenchEdgeColor = new Color(0.898f, 0.875f, 0.843f);
+        public Color metalColor = new Color(0.639f, 0.702f, 0.749f);
+        public Color metalDarkColor = new Color(0.357f, 0.420f, 0.494f);
+        public Color warmLightColor = new Color(1f, 0.859f, 0.600f);
+
         [Header("Combos")]
         public string comboGoodLabel = "GOOD!";
         public string comboGreatLabel = "GREAT!";

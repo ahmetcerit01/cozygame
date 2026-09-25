@@ -72,6 +72,34 @@ namespace CozyLab.Puzzle.Editor
         [MenuItem("CozyLab/Progress/Unlock All Levels (Play Mode)", true)]
         private static bool UnlockAllValidate() => Application.isPlaying && GameFlow.Active != null;
 
+        // ------------------------------------------------------------ development meta tools (Play Mode)
+
+        [MenuItem("CozyLab/Meta/Add 100 Research (Play Mode)")]
+        public static void AddResearch() => GameFlow.Active?.DevAddResearch(100);
+
+        [MenuItem("CozyLab/Meta/Clear Research (Play Mode)")]
+        public static void ClearResearch() => GameFlow.Active?.DevClearResearch();
+
+        [MenuItem("CozyLab/Meta/Set Microscope Level 1 (Play Mode)")]
+        public static void Microscope1() => GameFlow.Active?.DevSetMicroscopeLevel(1);
+
+        [MenuItem("CozyLab/Meta/Set Microscope Level 2 (Play Mode)")]
+        public static void Microscope2() => GameFlow.Active?.DevSetMicroscopeLevel(2);
+
+        [MenuItem("CozyLab/Meta/Set Microscope Level 3 (Play Mode)")]
+        public static void Microscope3() => GameFlow.Active?.DevSetMicroscopeLevel(3);
+
+        [MenuItem("CozyLab/Meta/Reset Meta Progress (Play Mode)")]
+        public static void ResetMeta() => GameFlow.Active?.DevResetMeta();
+
+        [MenuItem("CozyLab/Meta/Add 100 Research (Play Mode)", true)]
+        [MenuItem("CozyLab/Meta/Clear Research (Play Mode)", true)]
+        [MenuItem("CozyLab/Meta/Set Microscope Level 1 (Play Mode)", true)]
+        [MenuItem("CozyLab/Meta/Set Microscope Level 2 (Play Mode)", true)]
+        [MenuItem("CozyLab/Meta/Set Microscope Level 3 (Play Mode)", true)]
+        [MenuItem("CozyLab/Meta/Reset Meta Progress (Play Mode)", true)]
+        private static bool MetaToolsValidate() => Application.isPlaying && GameFlow.Active != null;
+
         [MenuItem("CozyLab/Progress/Show Save File")]
         public static void ShowSaveFile()
         {

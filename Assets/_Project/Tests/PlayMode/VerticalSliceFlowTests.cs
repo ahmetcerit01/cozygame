@@ -50,6 +50,13 @@ namespace CozyLab.Puzzle.Tests
             yield return LoadGame();
             var flow = GameFlow.Active;
 
+            // Launch lands on Home; reach the existing Level Select through Experiments.
+            Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
+            ClickObject("ExperimentsObject");
+            yield return null;
+            Click(FindButton("OpenExperimentButton"));
+            yield return null;
+
             // Fresh progress: only Level 1 is open, locked levels are rejected.
             Assert.AreEqual(GameFlow.FlowScreen.LevelSelect, flow.CurrentScreen);
             Assert.IsTrue(flow.LevelSelect.IsVisible);
@@ -93,6 +100,8 @@ namespace CozyLab.Puzzle.Tests
             yield return LoadGame();
             var reopened = GameFlow.Active;
             Assert.AreNotSame(flow, reopened);
+            Assert.AreEqual(GameFlow.FlowScreen.Home, reopened.CurrentScreen, "relaunch lands on Home");
+            reopened.ShowLevelSelect();
             Assert.IsTrue(reopened.Progression.IsCompleted(0));
             Assert.IsTrue(reopened.Progression.IsUnlocked(1));
             Assert.IsFalse(reopened.Progression.IsUnlocked(2));
@@ -112,6 +121,7 @@ namespace CozyLab.Puzzle.Tests
             });
             yield return LoadGame();
             var flow = GameFlow.Active;
+            flow.ShowLevelSelect();
 
             // Tap the completed dish, then tap it again to play (replay).
             flow.LevelSelect.Select(1);
@@ -137,6 +147,7 @@ namespace CozyLab.Puzzle.Tests
             new JsonFileProgressStore(_savePath).Save(new ProgressData { highestUnlockedIndex = 9, completedLevelIds = done });
             yield return LoadGame();
             var flow = GameFlow.Active;
+            flow.ShowLevelSelect();
 
             Assert.AreEqual(9, flow.LevelSelect.SelectedIndex, "level 10 is the current level");
             Assert.IsTrue(flow.TryOpenLevel(9));
@@ -152,7 +163,7 @@ namespace CozyLab.Puzzle.Tests
             Assert.AreEqual(GameFlow.FlowScreen.LevelSelect, flow.CurrentScreen);
             Assert.IsTrue(flow.LevelSelect.IsMilestoneVisible, "experiment complete milestone");
 
-            Click(FindButton("ContinueButton")); // milestone button
+            Click(FindButton("MilestoneLevelsButton")); // stay and review the levels
             yield return null;
             Assert.IsFalse(flow.LevelSelect.IsMilestoneVisible);
             Assert.AreEqual(LevelDishState.Completed, flow.LevelSelect.Dishes[9].State);
@@ -233,7 +244,7 @@ namespace CozyLab.Puzzle.Tests
 
         // ---------------------------------------------------------------- helpers
 
-        private static IEnumerator LoadGame()
+        internal static IEnumerator LoadGame()
         {
             var op = SceneManager.LoadSceneAsync(SceneName, LoadSceneMode.Single);
             while (!op.isDone) yield return null;
@@ -243,7 +254,7 @@ namespace CozyLab.Puzzle.Tests
             Assert.IsNotNull(GameFlow.Active.Progression, "GameFlow started");
         }
 
-        private static List<PuzzleSolver.Placement> SolutionFor(GameFlow flow)
+        internal static List<PuzzleSolver.Placement> SolutionFor(GameFlow flow)
         {
             var level = flow.PuzzleScreen.CurrentLevel;
             var shapes = level.Pieces.Select(p => p.shape.CreateShape()).ToList();
@@ -251,7 +262,7 @@ namespace CozyLab.Puzzle.Tests
             return solution;
         }
 
-        private static void RotateTo(IPieceInputListener input, PuzzleSession session, PuzzleSolver.Placement placement)
+        internal static void RotateTo(IPieceInputListener input, PuzzleSession session, PuzzleSolver.Placement placement)
         {
             var piece = session.GetPiece(placement.PieceIndex);
             var target = piece.BaseShape.Rotated(placement.Rotation);
@@ -260,7 +271,7 @@ namespace CozyLab.Puzzle.Tests
         }
 
         /// <summary>Solves the open level: rotations via taps (input path), optional first piece via drag.</summary>
-        private static IEnumerator SolveCurrentLevel(GameFlow flow, bool dragFirstPiece)
+        internal static IEnumerator SolveCurrentLevel(GameFlow flow, bool dragFirstPiece)
         {
             var controller = flow.PuzzleScreen.Controller;
             var session = controller.Session;
@@ -287,7 +298,7 @@ namespace CozyLab.Puzzle.Tests
             Assert.IsTrue(session.IsSolved);
         }
 
-        private static IEnumerator Drag(IPieceInputListener input, PieceView view, Vector3 target)
+        internal static IEnumerator Drag(IPieceInputListener input, PieceView view, Vector3 target)
         {
             var start = view.Rect.position;
             input.OnPieceBeginDrag(view.PieceId, Gesture(start));
@@ -300,13 +311,13 @@ namespace CozyLab.Puzzle.Tests
             yield return null;
         }
 
-        private static PieceGesture Gesture(Vector3 screen)
+        internal static PieceGesture Gesture(Vector3 screen)
         {
             var e = new PointerEventData(EventSystem.current) { position = screen, pointerId = -1 };
             return new PieceGesture(e);
         }
 
-        private static Button FindButton(string name)
+        internal static Button FindButton(string name)
         {
             var button = Object.FindObjectsByType<Button>(FindObjectsSortMode.None)
                 .FirstOrDefault(b => b.name == name && b.gameObject.activeInHierarchy);
@@ -314,13 +325,21 @@ namespace CozyLab.Puzzle.Tests
             return button;
         }
 
-        private static void Click(Button button)
+        internal static void Click(Button button)
         {
             Assert.IsTrue(button.interactable, $"{button.name} interactable");
             button.onClick.Invoke();
         }
 
-        private static void ClickDish(GameFlow flow, int index)
+        internal static void ClickObject(string name)
+        {
+            var target = Object.FindObjectsByType<TapTarget>(FindObjectsSortMode.None)
+                .FirstOrDefault(t => t.name == name && t.gameObject.activeInHierarchy);
+            Assert.IsNotNull(target, $"object '{name}' visible");
+            target.Invoke();
+        }
+
+        internal static void ClickDish(GameFlow flow, int index)
         {
             var dish = flow.LevelSelect.Dishes[index];
             dish.OnPointerClick(new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Left });

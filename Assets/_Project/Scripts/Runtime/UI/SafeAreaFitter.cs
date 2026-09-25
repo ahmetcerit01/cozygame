@@ -6,6 +6,12 @@ namespace CozyLab.Puzzle.UI
     [RequireComponent(typeof(RectTransform))]
     public sealed class SafeAreaFitter : MonoBehaviour
     {
+        /// <summary>
+        /// Development/testing only: when set, this normalized safe rect (0..1) is used instead of Screen.safeArea,
+        /// e.g. to render iPhone 15 Plus insets in headless screenshot tests. Null on devices.
+        /// </summary>
+        public static Rect? SimulatedNormalizedSafeArea { get; set; }
+
         private Rect _lastSafeArea;
         private Vector2Int _lastScreenSize;
 
@@ -15,10 +21,13 @@ namespace CozyLab.Puzzle.UI
 
         private void Apply(bool force)
         {
-            var safe = Screen.safeArea;
             var screenSize = new Vector2Int(Screen.width, Screen.height);
-            if (!force && safe == _lastSafeArea && screenSize == _lastScreenSize) return;
             if (screenSize.x <= 0 || screenSize.y <= 0) return;
+            var safe = SimulatedNormalizedSafeArea.HasValue
+                ? new Rect(SimulatedNormalizedSafeArea.Value.x * screenSize.x, SimulatedNormalizedSafeArea.Value.y * screenSize.y,
+                    SimulatedNormalizedSafeArea.Value.width * screenSize.x, SimulatedNormalizedSafeArea.Value.height * screenSize.y)
+                : Screen.safeArea;
+            if (!force && safe == _lastSafeArea && screenSize == _lastScreenSize) return;
 
             _lastSafeArea = safe;
             _lastScreenSize = screenSize;

@@ -17,5 +17,10 @@ MonoBehaviour:
   validPlacement: {fileID: 0}
   invalidPlacement: {fileID: 0}
   completion: {fileID: 0}
+  uiSelect: {fileID: 0}
+  researchReward: {fileID: 0}
+  equipmentTap: {fileID: 0}
+  equipmentUpgrade: {fileID: 0}
+  equipmentUnlock: {fileID: 0}
   volume: 0.8
   pitchJitter: 0.05

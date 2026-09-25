@@ -15,6 +15,13 @@ namespace CozyLab.Puzzle.Data
         public AudioClip invalidPlacement;
         public AudioClip completion;
 
+        [Header("Meta (optional)")]
+        public AudioClip uiSelect;
+        public AudioClip researchReward;
+        public AudioClip equipmentTap;
+        public AudioClip equipmentUpgrade;
+        public AudioClip equipmentUnlock;
+
         [Range(0f, 1f)] public float volume = 0.8f;
         [Tooltip("Random pitch variation (+/-) so repeated sounds don't feel mechanical.")]
         [Range(0f, 0.3f)] public float pitchJitter = 0.05f;
@@ -28,6 +35,11 @@ namespace CozyLab.Puzzle.Data
                 case PuzzleFeedbackEvent.ValidPlacement: return validPlacement;
                 case PuzzleFeedbackEvent.InvalidPlacement: return invalidPlacement;
                 case PuzzleFeedbackEvent.Completion: return completion;
+                case PuzzleFeedbackEvent.UiSelect: return uiSelect;
+                case PuzzleFeedbackEvent.ResearchReward: return researchReward;
+                case PuzzleFeedbackEvent.EquipmentTap: return equipmentTap;
+                case PuzzleFeedbackEvent.EquipmentUpgrade: return equipmentUpgrade;
+                case PuzzleFeedbackEvent.EquipmentUnlock: return equipmentUnlock;
                 default: return null;
             }
         }

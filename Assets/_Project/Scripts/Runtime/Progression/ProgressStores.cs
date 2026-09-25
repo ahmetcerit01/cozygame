@@ -108,5 +108,8 @@ namespace CozyLab.Puzzle.Progression
         }
 
         public void Delete() => _json = null;
+
+        /// <summary>Stores raw JSON as-is (e.g. an older save version) for migration tests.</summary>
+        public void SaveRaw(string json) => _json = json;
     }
 }

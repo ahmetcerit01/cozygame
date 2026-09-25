@@ -28,6 +28,9 @@ namespace CozyLab.Puzzle.UI
         private CanvasGroup _overlayGroup;
         private RectTransform _card;
         private Coroutine _overlayRoutine;
+        private RectTransform _reward;
+        private Text _rewardText;
+        private int _pendingResearch;
 
         public event Action UndoClicked;
         public event Action RestartClicked;
@@ -89,6 +92,17 @@ namespace CozyLab.Puzzle.UI
         }
 
         public bool IsSuccessVisible => _overlay != null && _overlay.gameObject.activeSelf;
+        public bool IsRewardVisible => _reward != null && _reward.gameObject.activeSelf;
+        public string RewardText => _rewardText != null ? _rewardText.text : string.Empty;
+
+        /// <summary>
+        /// Research earned by this completion, shown as a small badge once the success card appears.
+        /// Supplied by the flow; the HUD has no idea where it comes from.
+        /// </summary>
+        public void SetPendingResearch(int amount)
+        {
+            _pendingResearch = Mathf.Max(0, amount);
+        }
 
         public void ShowSuccess(float delay)
         {
@@ -104,6 +118,22 @@ namespace CozyLab.Puzzle.UI
                 float s = Mathf.LerpUnclamped(0.6f, 1f, Ease.OutBack(t));
                 _card.localScale = new Vector3(s, s, 1f);
             }, null, delay);
+
+            _reward.gameObject.SetActive(false);
+            if (_pendingResearch > 0) ShowReward(_pendingResearch, delay + 0.4f);
+        }
+
+        private void ShowReward(int amount, float delay)
+        {
+            _rewardText.text = "+0 RESEARCH";
+            _reward.localScale = Vector3.zero;
+            Tween.Run(this, 0.6f, Ease.Linear, t =>
+            {
+                _reward.gameObject.SetActive(true);
+                float s = Mathf.LerpUnclamped(0f, 1f, Ease.OutBack(Mathf.Clamp01(t * 1.8f)));
+                _reward.localScale = new Vector3(s, s, 1f);
+                _rewardText.text = $"+{Mathf.RoundToInt(amount * Ease.OutCubic(t))} RESEARCH";
+            }, () => _rewardText.text = $"+{amount} RESEARCH", delay);
         }
 
         public void HideSuccess()
@@ -159,6 +189,17 @@ namespace CozyLab.Puzzle.UI
             var levels = UIButtons.CreatePill("LevelsButton", _card, "LEVELS", new Vector2(320f, 96f),
                 new Vector2(0f, -240f), theme.buttonColor, theme.buttonTextColor, 34, shadow: false);
             levels.onClick.AddListener(() => LevelsClicked?.Invoke());
+
+            // Research badge riding on the card's top edge (doesn't cover CURE FOUND!).
+            _reward = UIFactory.CreateCentered("ResearchReward", _card, new Vector2(380f, 84f), new Vector2(0f, cardSize.y * 0.5f));
+            UIFactory.CreateShadow("Shadow", _reward, new Vector2(380f, 84f), 16f, new Color(0.1f, 0.18f, 0.22f, 0.16f),
+                new Vector2(0f, -6f));
+            UIFactory.CreateRoundedImage("Body", _reward, new Vector2(380f, 84f), 42f, Color.white);
+            ResearchIcon.Create(_reward, 58f, theme.accentColor, new Vector2(-138f, 0f));
+            _rewardText = UIFactory.CreateText("Amount", _reward, string.Empty, 34, theme.textPrimaryColor, TextAnchor.MiddleLeft,
+                FontStyle.Bold);
+            PlaceCentered(_rewardText.rectTransform, new Vector2(280f, 84f), new Vector2(45f, 0f));
+            _reward.gameObject.SetActive(false);
 
             _overlay.gameObject.SetActive(false);
         }

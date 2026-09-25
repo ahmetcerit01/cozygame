@@ -95,7 +95,7 @@ namespace CozyLab.Puzzle.Tests
                 Assert.IsFalse(reopened.IsUnlocked(3));
 
                 var json = File.ReadAllText(path);
-                StringAssert.Contains("\"version\": 1", json);
+                StringAssert.Contains($"\"version\": {ProgressData.CurrentVersion}", json);
                 StringAssert.Contains("\"highestUnlockedIndex\": 2", json);
             }
             finally

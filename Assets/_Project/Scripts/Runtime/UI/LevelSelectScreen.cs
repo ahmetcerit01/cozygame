@@ -38,12 +38,19 @@ namespace CozyLab.Puzzle.UI
         private RectTransform _milestoneCard;
         private UIParticles _particles;
         private Coroutine _milestoneRoutine;
+        private RectTransform _milestoneBonus;
+        private Text _milestoneBonusText;
         private int _selectedIndex;
 
         /// <summary>Player wants to play this (unlocked) level.</summary>
         public event Action<int> PlayRequested;
         /// <summary>Development-only long-press on the title.</summary>
         public event Action DevResetRequested;
+        /// <summary>Top-left BACK pill (to Experiments or Home, decided by the flow).</summary>
+        public event Action BackRequested;
+        /// <summary>Experiment-complete card navigation.</summary>
+        public event Action MilestoneHomeRequested;
+        public event Action MilestoneLabRequested;
 
         public int SelectedIndex => _selectedIndex;
         public bool IsVisible => _root != null && _root.activeSelf;
@@ -64,13 +71,14 @@ namespace CozyLab.Puzzle.UI
             if (_progression != null) _progression.Changed -= Refresh;
         }
 
-        public void Show(int selectIndex, bool showMilestone = false)
+        /// <param name="milestoneResearch">Research granted for completing the experiment (0 hides the reward line).</param>
+        public void Show(int selectIndex, bool showMilestone = false, int milestoneResearch = 0)
         {
             ScreenCanvas.ApplyCamera(_theme);
             _root.SetActive(true);
             Refresh();
             Select(Mathf.Clamp(selectIndex, 0, _catalog.Count - 1));
-            if (showMilestone) ShowMilestone();
+            if (showMilestone) ShowMilestone(milestoneResearch);
             else HideMilestone();
         }
 
@@ -146,6 +154,14 @@ namespace CozyLab.Puzzle.UI
             header.anchorMax = new Vector2(1f, 1f);
             header.pivot = new Vector2(0.5f, 1f);
             header.sizeDelta = new Vector2(0f, headerHeight);
+
+            // Small navigation addition: back to Experiments / Home.
+            var back = UIButtons.CreatePill("BackButton", header, "BACK", new Vector2(200f, 96f), Vector2.zero,
+                _theme.buttonColor, _theme.buttonTextColor, 32);
+            var backRt = (RectTransform)back.transform;
+            backRt.anchorMin = backRt.anchorMax = new Vector2(0f, 1f);
+            backRt.anchoredPosition = new Vector2(140f, -68f);
+            back.onClick.AddListener(() => BackRequested?.Invoke());
 
             var chapter = UIFactory.CreateText("Chapter", header, _catalog.ChapterTitle.ToUpperInvariant(), 34,
                 _theme.accentColor, TextAnchor.MiddleCenter, FontStyle.Bold);
@@ -235,7 +251,7 @@ namespace CozyLab.Puzzle.UI
             _milestoneGroup = _milestone.gameObject.AddComponent<CanvasGroup>();
             var safe = ScreenCanvas.AddSafeArea(_milestone);
 
-            var size = new Vector2(880f, 760f);
+            var size = new Vector2(880f, 1000f);
             _milestoneCard = UIFactory.CreateCentered("Card", safe, size);
             UIFactory.CreateShadow("Shadow", _milestoneCard, size, 60f, new Color(0f, 0f, 0f, 0.25f), new Vector2(0f, -24f));
             UIFactory.CreateRoundedImage("Body", _milestoneCard, size, 84f, _theme.cardColor);
@@ -245,27 +261,50 @@ namespace CozyLab.Puzzle.UI
 
             var chapter = UIFactory.CreateText("Chapter", _milestoneCard, _catalog.ChapterTitle.ToUpperInvariant(), 34,
                 _theme.textSecondaryColor, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Place(chapter.rectTransform, new Vector2(800f, 60f), new Vector2(0f, 280f));
+            Place(chapter.rectTransform, new Vector2(800f, 60f), new Vector2(0f, 410f));
 
-            var title = UIFactory.CreateText("Title", _milestoneCard, _catalog.CompletionTitle, 78, _theme.comboPerfectColor,
+            var title = UIFactory.CreateText("Title", _milestoneCard, _catalog.CompletionTitle, 72, _theme.comboPerfectColor,
                 TextAnchor.MiddleCenter, FontStyle.Bold);
-            Place(title.rectTransform, new Vector2(840f, 200f), new Vector2(0f, 170f));
+            Place(title.rectTransform, new Vector2(840f, 180f), new Vector2(0f, 305f));
 
-            var message = UIFactory.CreateText("Message", _milestoneCard, _catalog.CompletionMessage, 38,
+            var cured = UIFactory.CreateText("Cured", _milestoneCard,
+                $"{_catalog.ChapterSubtitle.ToUpperInvariant()}  ·  {_catalog.Count} / {_catalog.Count} CURED", 36,
+                _theme.accentColor, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Place(cured.rectTransform, new Vector2(820f, 60f), new Vector2(0f, 205f));
+
+            var message = UIFactory.CreateText("Message", _milestoneCard, _catalog.CompletionMessage, 36,
                 _theme.textPrimaryColor);
-            Place(message.rectTransform, new Vector2(760f, 160f), new Vector2(0f, 10f));
+            Place(message.rectTransform, new Vector2(760f, 150f), new Vector2(0f, 100f));
 
-            var cont = UIButtons.CreatePill("ContinueButton", _milestoneCard, "CONTINUE", new Vector2(520f, 140f),
-                new Vector2(0f, -230f), _theme.accentColor, Color.white);
-            cont.onClick.AddListener(HideMilestone);
+            // One-time experiment reward (hidden when 0).
+            _milestoneBonus = UIFactory.CreateCentered("ResearchBonus", _milestoneCard, new Vector2(420f, 84f), new Vector2(0f, -10f));
+            UIFactory.CreateRoundedImage("Body", _milestoneBonus, new Vector2(420f, 84f), 42f,
+                Color.Lerp(_theme.backgroundColor, Color.white, 0.4f));
+            ResearchIcon.Create(_milestoneBonus, 60f, _theme.accentColor, new Vector2(-150f, 0f));
+            _milestoneBonusText = UIFactory.CreateText("Amount", _milestoneBonus, string.Empty, 36, _theme.textPrimaryColor,
+                TextAnchor.MiddleLeft, FontStyle.Bold);
+            Place(_milestoneBonusText.rectTransform, new Vector2(300f, 84f), new Vector2(40f, 0f));
+
+            // Navigation: Home (primary), Lab, or stay here to review levels. Never forced into the Lab.
+            var home = UIButtons.CreatePill("MilestoneHomeButton", _milestoneCard, "HOME", new Vector2(520f, 136f),
+                new Vector2(0f, -170f), _theme.accentColor, Color.white);
+            home.onClick.AddListener(() => MilestoneHomeRequested?.Invoke());
+            var lab = UIButtons.CreatePill("MilestoneLabButton", _milestoneCard, "LAB", new Vector2(250f, 100f),
+                new Vector2(-140f, -330f), _theme.buttonColor, _theme.buttonTextColor, 36);
+            lab.onClick.AddListener(() => MilestoneLabRequested?.Invoke());
+            var levels = UIButtons.CreatePill("MilestoneLevelsButton", _milestoneCard, "LEVELS", new Vector2(250f, 100f),
+                new Vector2(140f, -330f), _theme.buttonColor, _theme.buttonTextColor, 36);
+            levels.onClick.AddListener(HideMilestone);
 
             _milestone.gameObject.SetActive(false);
         }
 
-        private void ShowMilestone()
+        private void ShowMilestone(int research)
         {
             Tween.Stop(this, ref _milestoneRoutine);
             _milestone.gameObject.SetActive(true);
+            _milestoneBonus.gameObject.SetActive(research > 0);
+            _milestoneBonusText.text = $"+{research} RESEARCH";
             _milestoneGroup.alpha = 0f;
             _milestoneCard.localScale = Vector3.one * 0.7f;
             _milestoneRoutine = Tween.Run(this, 0.55f, Ease.Linear, t =>

@@ -10,8 +10,10 @@ namespace CozyLab.Puzzle.Progression
     public sealed class LevelProgression
     {
         private readonly IReadOnlyList<string> _levelIds;
-        private readonly IProgressStore _store;
-        private ProgressData _data;
+        private readonly ProgressRepository _repo;
+
+        // Always read through the repository: a full reset swaps the payload object.
+        private ProgressData _data => _repo.Data;
 
         public event Action Changed;
 
@@ -33,13 +35,25 @@ namespace CozyLab.Puzzle.Progression
             }
         }
 
+        /// <summary>Standalone progression with its own repository (no meta migration).</summary>
         public LevelProgression(IReadOnlyList<string> levelIds, IProgressStore store)
+            : this(levelIds, new ProgressRepository(store))
+        {
+        }
+
+        /// <summary>Progression sharing a repository (and save file) with other systems.</summary>
+        public LevelProgression(IReadOnlyList<string> levelIds, ProgressRepository repository)
         {
             _levelIds = levelIds ?? throw new ArgumentNullException(nameof(levelIds));
-            _store = store ?? throw new ArgumentNullException(nameof(store));
-            _data = Sanitize(_store.Load());
+            _repo = repository ?? throw new ArgumentNullException(nameof(repository));
+            Sanitize(_repo.Data);
             RecountCompleted();
         }
+
+        /// <summary>Level ids in play order.</summary>
+        public IReadOnlyList<string> LevelIds => _levelIds;
+
+        public string GetLevelId(int index) => index >= 0 && index < LevelCount ? _levelIds[index] : null;
 
         public bool IsUnlocked(int index) => index >= 0 && index < LevelCount && index <= _data.highestUnlockedIndex;
 
@@ -79,8 +93,7 @@ namespace CozyLab.Puzzle.Progression
         /// <summary>Wipes progress back to a fresh install (development / settings use).</summary>
         public void Reset()
         {
-            _store.Delete();
-            _data = ProgressData.CreateFresh();
+            _repo.ResetAll();
             RecountCompleted();
             Changed?.Invoke();
         }
@@ -102,8 +115,7 @@ namespace CozyLab.Puzzle.Progression
 
         private void Commit()
         {
-            _data.version = ProgressData.CurrentVersion;
-            _store.Save(_data);
+            _repo.Save();
             RecountCompleted();
             Changed?.Invoke();
         }
@@ -119,10 +131,9 @@ namespace CozyLab.Puzzle.Progression
         }
 
         /// <summary>Clamps loaded data to the current catalog (levels may have been added or removed).</summary>
-        private ProgressData Sanitize(ProgressData loaded)
+        private void Sanitize(ProgressData data)
         {
-            var data = loaded ?? ProgressData.CreateFresh();
-            if (data.completedLevelIds == null) data.completedLevelIds = new List<string>();
+            data.Normalize();
 
             int maxIndex = Math.Max(0, LevelCount - 1);
             data.highestUnlockedIndex = Math.Max(0, Math.Min(data.highestUnlockedIndex, maxIndex));
@@ -133,7 +144,6 @@ namespace CozyLab.Puzzle.Progression
                 if (data.completedLevelIds.Contains(_levelIds[i]))
                     data.highestUnlockedIndex = Math.Max(data.highestUnlockedIndex, Math.Min(i + 1, maxIndex));
             }
-            return data;
         }
     }
 }

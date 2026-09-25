@@ -268,6 +268,9 @@ GameObject:
   - component: {fileID: 200000003}
   - component: {fileID: 200000004}
   - component: {fileID: 200000005}
+  - component: {fileID: 200000006}
+  - component: {fileID: 200000007}
+  - component: {fileID: 200000008}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -352,7 +355,49 @@ MonoBehaviour:
   audioSet: {fileID: 11400000, guid: 3f6a1c2e8b7d4e5fa1b2c3d4e5f60402, type: 2}
   puzzleScreen: {fileID: 200000003}
   levelSelect: {fileID: 200000004}
+  home: {fileID: 200000006}
+  experiments: {fileID: 200000007}
+  lab: {fileID: 200000008}
   targetFrameRate: 60
+--- !u!114 &200000006
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 200000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c867ea8c9f011184c8ffa76cefbd5d2e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CozyLab.Puzzle::CozyLab.Puzzle.UI.HomeScreen
+  referenceResolution: {x: 1080, y: 1920}
+--- !u!114 &200000007
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 200000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28bd647e48f743d468b225b27fab3890, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CozyLab.Puzzle::CozyLab.Puzzle.UI.ExperimentsScreen
+  referenceResolution: {x: 1080, y: 1920}
+--- !u!114 &200000008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 200000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b56389c7810fb0444b4c24cdc031def9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CozyLab.Puzzle::CozyLab.Puzzle.UI.LabScreen
+  referenceResolution: {x: 1080, y: 1920}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

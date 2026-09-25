@@ -1,6 +1,6 @@
 namespace CozyLab.Puzzle.Feedback
 {
-    /// <summary>Moments in the puzzle that deserve sound and haptics. Theme-agnostic.</summary>
+    /// <summary>Moments that deserve sound and haptics (puzzle and meta screens). Theme-agnostic.</summary>
     public enum PuzzleFeedbackEvent
     {
         Pickup,
@@ -8,5 +8,12 @@ namespace CozyLab.Puzzle.Feedback
         ValidPlacement,
         InvalidPlacement,
         Completion,
+
+        // Meta / navigation (Home, Experiments, Lab)
+        UiSelect,
+        ResearchReward,
+        EquipmentTap,
+        EquipmentUpgrade,
+        EquipmentUnlock,
     }
 }
