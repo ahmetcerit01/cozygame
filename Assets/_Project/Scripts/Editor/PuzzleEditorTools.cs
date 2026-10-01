@@ -100,6 +100,13 @@ namespace CozyLab.Puzzle.Editor
         [MenuItem("CozyLab/Meta/Reset Meta Progress (Play Mode)", true)]
         private static bool MetaToolsValidate() => Application.isPlaying && GameFlow.Active != null;
 
+        // Switches instantly (in Play Mode, visible UI updates) and is remembered like the in-game Settings choice.
+        [MenuItem("CozyLab/Language/English")]
+        public static void LanguageEnglish() => Localization.Loc.SetLanguage("en");
+
+        [MenuItem("CozyLab/Language/Türkçe")]
+        public static void LanguageTurkish() => Localization.Loc.SetLanguage("tr");
+
         [MenuItem("CozyLab/Progress/Show Save File")]
         public static void ShowSaveFile()
         {

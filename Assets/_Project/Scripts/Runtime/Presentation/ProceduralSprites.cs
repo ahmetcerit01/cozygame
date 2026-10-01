@@ -21,11 +21,19 @@ namespace CozyLab.Puzzle.Presentation
 
         private const int CircleTextureSize = 128;
 
+        private const int CircleShadowTextureSize = 160;
+        private const int CircleShadowBlurPx = 40;
+
+        private const int FadeTextureSize = 128;
+
         private static Sprite _roundedRect;
         private static Sprite _softShadow;
         private static Sprite _circle;
         private static Sprite _softGlow;
         private static Sprite _ring;
+        private static Sprite _softCircleShadow;
+        private static Sprite _verticalFade;
+        private static Sprite _insetWell;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
@@ -36,6 +44,9 @@ namespace CozyLab.Puzzle.Presentation
             _circle = null;
             _softGlow = null;
             _ring = null;
+            _softCircleShadow = null;
+            _verticalFade = null;
+            _insetWell = null;
         }
 
         /// <summary>9-sliced rounded rectangle. Use <see cref="ApplyRounded"/> to pick the corner radius.</summary>
@@ -52,6 +63,39 @@ namespace CozyLab.Puzzle.Presentation
 
         /// <summary>Soap-bubble style ring: crisp rim with a faint filled centre.</summary>
         public static Sprite Ring => _ring != null ? _ring : (_ring = CreateRing());
+
+        /// <summary>9-sliced blurred disc (a circular counterpart to <see cref="SoftShadow"/>) for round trays.</summary>
+        public static Sprite SoftCircleShadow => _softCircleShadow != null ? _softCircleShadow : (_softCircleShadow = CreateSoftCircleShadow());
+
+        /// <summary>Opaque top fading to transparent bottom. Stretches cleanly (Simple type) since it only
+        /// varies vertically — used for desk lighting and other directional overlay gradients.</summary>
+        public static Sprite VerticalFade => _verticalFade != null ? _verticalFade : (_verticalFade = CreateVerticalFade());
+
+        public static Sprite InsetWell => _insetWell != null ? _insetWell : (_insetWell = CreateInsetWell());
+
+        private static Sprite CreateInsetWell()
+        {
+            const int size = 128;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                var p = new Vector2(x + 0.5f - 64f, y + 0.5f - 64f);
+                float d = RoundedBoxDistance(p, Vector2.one * 61f, 20f);
+                float coverage = Mathf.Clamp01(0.5f - d);
+                float depth = Mathf.Max(0f, -d);
+                float nx = RoundedBoxDistance(p + Vector2.right, Vector2.one * 61f, 20f) - d;
+                float ny = RoundedBoxDistance(p + Vector2.up, Vector2.one * 61f, 20f) - d;
+                float facingLight = Mathf.Clamp01((-nx + ny) * 0.7f);
+                float innerShadow = Mathf.Exp(-depth / 7f) * (0.35f + facingLight * 0.65f);
+                float lowerLip = Mathf.Exp(-Mathf.Pow((depth - 1.5f) / 1.6f, 2f)) * Mathf.Clamp01((nx - ny) * 0.7f);
+                var tint = Color.Lerp(new Color(0.60f, 0.59f, 0.48f), new Color(0.24f, 0.25f, 0.17f), innerShadow * 0.8f);
+                tint = Color.Lerp(tint, new Color(1f, 0.94f, 0.76f), lowerLip * 0.75f);
+                tint.a = coverage * (0.24f + innerShadow * 0.36f + lowerLip * 0.12f);
+                pixels[y * size + x] = tint;
+            }
+            return CreateSprite("CozyLab_InsetWell", size, pixels, 0);
+        }
 
         /// <summary>Configures an Image as a rounded rectangle with the given corner radius in UI units.</summary>
         public static void ApplyRounded(Image image, float cornerRadius)
@@ -76,6 +120,18 @@ namespace CozyLab.Puzzle.Presentation
 
         /// <summary>How much larger (per side) a shadow rect must be for the given blur.</summary>
         public static float ShadowPadding(float blur) => blur;
+
+        /// <summary>
+        /// Configures an Image as a circular soft shadow. Size the rect as (dish diameter + 2 * blur).
+        /// Unlike <see cref="ApplySoftShadow"/> this stays <see cref="Image.Type.Simple"/>: the texture is
+        /// already radially symmetric, and 9-slicing a circle (which has no straight edges to tile) distorts
+        /// it into a rounded square. A plain uniform stretch keeps it a true circle for any (square) rect size.
+        /// </summary>
+        public static void ApplySoftCircleShadow(Image image)
+        {
+            image.sprite = SoftCircleShadow;
+            image.type = Image.Type.Simple;
+        }
 
         private static Sprite CreateRoundedRect()
         {
@@ -108,6 +164,40 @@ namespace CozyLab.Puzzle.Presentation
                 pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * a * 255f));
             }
             return CreateSprite("CozyLab_SoftShadow", size, pixels, ShadowRadiusPx + ShadowBlurPx);
+        }
+
+        /// <summary>Radially symmetric counterpart to <see cref="CreateSoftShadow"/>, for shadows cast by round trays.</summary>
+        private static Sprite CreateSoftCircleShadow()
+        {
+            int size = CircleShadowTextureSize;
+            float half = size * 0.5f;
+            float coreRadius = half - CircleShadowBlurPx;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float r = new Vector2(x + 0.5f - half, y + 0.5f - half).magnitude;
+                // d <= 0 inside the core; fade out across the blur band.
+                float d = r - coreRadius;
+                float t = Mathf.Clamp01(d / CircleShadowBlurPx);
+                float a = 1f - t * t * (3f - 2f * t);
+                pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * a * 255f));
+            }
+            return CreateSprite("CozyLab_SoftCircleShadow", size, pixels, half);
+        }
+
+        private static Sprite CreateVerticalFade()
+        {
+            int size = FadeTextureSize;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                // y=0 is the bottom row in texture space; fade so the TOP of the sprite is opaque.
+                float t = y / (float)(size - 1);
+                byte a = (byte)(Mathf.SmoothStep(0f, 1f, t) * 255f);
+                for (int x = 0; x < size; x++) pixels[y * size + x] = new Color32(255, 255, 255, a);
+            }
+            return CreateSprite("CozyLab_VerticalFade", size, pixels, 0);
         }
 
         private static Sprite CreateCircle()

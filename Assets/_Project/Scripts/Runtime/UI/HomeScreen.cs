@@ -1,5 +1,6 @@
 using System;
 using CozyLab.Puzzle.Data;
+using CozyLab.Puzzle.Localization;
 using CozyLab.Puzzle.Presentation;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,40 +10,69 @@ namespace CozyLab.Puzzle.UI
     /// <summary>What Home should show. Built by the flow from puzzle + meta progression.</summary>
     public struct HomeState
     {
-        public string ExperimentLabel;   // "EXPERIMENT 01"
-        public string ExperimentTitle;   // "Virus Samples"
+        public LocString ExperimentTitle; // "Virus Samples"
         public int Cured;
         public int Total;
         public int NextLevelNumber;      // 1-based, 0 when complete
-        public string NextLevelTitle;
-        public int MicroscopeLevel;      // shown on the Lab desk object
+        public LocString NextLevelTitle;
+        public int MicroscopeLevel;
         public int NewlyCuredFrom;       // index of the first newly cured sample to acknowledge, -1 for none
+        public int Research;
+        public bool UpgradeAvailable;    // Research affords a Lab upgrade (badge on the Lab tile)
     }
 
     /// <summary>
-    /// Close-up of the player's workbench. The current experiment dish is the hero; the primary action
-    /// (BEGIN / CONTINUE / VIEW RESULTS) plays directly. Experiments and Lab are small desk objects.
+    /// The hub, built on the authored Home clean plate (desk, clipboard, petri dish of jelly samples).
+    /// Only dynamic UI is layered on top: currency pills, the clipboard's Current Sample text, the CONTINUE
+    /// action and a 2×2 block of navigation tiles in the free desk area.
     /// </summary>
     public sealed class HomeScreen : MonoBehaviour
     {
         [SerializeField] private Vector2 referenceResolution = new Vector2(1080f, 1920f);
 
+        // Authored full-screen Home art and UI icons, supplied by GameFlow. The art is cover-fitted, never stretched.
+        private Sprite _background;
+        private HomeIcons _icons;
+
+        // Blank clipboard paper inside the plate, in normalized image coordinates (0,0 = bottom-left).
+        private static readonly Rect ClipboardPaper = new Rect(0.340f, 0.659f, 0.393f, 0.111f);
+        // Upper half of the petri dish, where the "new sample cured" note appears.
+        private static readonly Vector2 DishTop = new Vector2(0.5f, 0.60f);
+        // Clipboard text is laid out at this size (the paper at 1080×1920) and scaled with the art.
+        private static readonly Vector2 ClipboardDesign = new Vector2(424f, 213f);
+
+        // Bottom block, laid out bottom-up in the safe area: two tile rows, then CONTINUE.
+        private const float TileWidth = 476f;
+        private const float TileRowHigh = 200f;
+        private const float TileRowLow = 150f;
+        private const float TileGap = 26f;
+        private const float BottomMargin = 30f;
+        private const float PrimaryGap = 40f;
+        private const float PrimaryHeight = 150f;
+        private const float StatusBarHeight = 130f;
+
         private PuzzleTheme _theme;
         private GameObject _root;
         private CanvasGroup _group;
         private RectTransform _content;
-        private ExperimentDishView _dish;
-        private Text _experimentLabel;
-        private Text _supportTitle;
-        private Text _supportLine;
+        private RectTransform _art;
+        private Text _clipHeader;
+        private Text _clipTitle;
+        private Text _clipLevel;
+        private Image[] _progressDots = Array.Empty<Image>();
+        private RectTransform _dotsRow;
+        private CurrencyPill _coins;
+        private CurrencyPill _research;
         private Button _primary;
         private RectTransform _primaryRt;
-        private RectTransform _labObjectHolder;
+        private float _primaryY;
+        private NotificationBadge _labBadge;
         private RectTransform _toast;
         private CanvasGroup _toastGroup;
         private Coroutine _toastRoutine;
         private Coroutine _enterRoutine;
-        private int _shownMicroscopeLevel = -1;
+        private int _cured;
+        private HomeArtFramer _artFramer;
 
         public enum PrimaryAction
         {
@@ -52,23 +82,39 @@ namespace CozyLab.Puzzle.UI
         }
 
         public PrimaryAction CurrentAction { get; private set; }
-        public string PrimaryLabel { get; private set; }
-        public string SupportTitle => _supportTitle != null ? _supportTitle.text : string.Empty;
+        /// <summary>The primary button's label as currently displayed (localized).</summary>
+        public string PrimaryLabel => UIButtons.GetLabel(_primary);
+        public string ClipboardHeader => _clipHeader != null ? _clipHeader.text : string.Empty;
+        public string ClipboardTitle => _clipTitle != null ? _clipTitle.text : string.Empty;
+        public string ClipboardLevel => _clipLevel != null ? _clipLevel.text : string.Empty;
+        public int Cured => _cured;
         public bool IsVisible => _root != null && _root.activeSelf;
-        public ExperimentDishView Dish => _dish;
         public bool IsToastVisible => _toast != null && _toast.gameObject.activeSelf;
+        public bool IsLabBadgeVisible => _labBadge != null && _labBadge.IsVisible;
+        public bool HasAuthoredBackground => _background != null;
+        public int ShownResearch => _research != null ? _research.ShownValue : 0;
 
         public event Action PrimaryClicked;
         public event Action ExperimentsClicked;
         public event Action LabClicked;
+        public event Action DailyClicked;
+        public event Action ShopClicked;
+        public event Action SettingsClicked;
 
-        public void Initialize(PuzzleTheme theme, int experimentLevelCount, string experimentTitle)
+        /// <param name="background">Authored Home art (GameFlow's Home Background reference).</param>
+        /// <param name="icons">Authored Home UI icons (GameFlow's Home Icons).</param>
+        public void Initialize(PuzzleTheme theme, Sprite background, HomeIcons icons)
         {
             _theme = theme;
-            Build(experimentLevelCount, experimentTitle);
+            _background = background;
+            _icons = icons;
+            Build();
         }
 
-        public void Show(HomeState state, float enterFromScale = 0.98f)
+        /// <summary>How much the art is lifted (1 = not at all), for layout checks.</summary>
+        public float ArtLift => _artFramer != null ? _artFramer.Scale : 1f;
+
+        public void Show(HomeState state, float enterFromScale = 0.985f)
         {
             ScreenCanvas.ApplyCamera(_theme);
             _root.SetActive(true);
@@ -76,15 +122,14 @@ namespace CozyLab.Puzzle.UI
 
             Tween.Stop(this, ref _enterRoutine);
             _enterRoutine = ScreenTransition.Enter(this, _group, _content, enterFromScale);
-            _dish.PlayEntrance();
 
-            // Primary action slides in softly but is clickable immediately.
+            // Primary action rises softly but is clickable immediately.
             Tween.Run(this, 0.35f, Ease.Linear, t =>
             {
-                _primaryRt.anchoredPosition = new Vector2(0f, PrimaryY + Mathf.Lerp(-30f, 0f, Ease.OutCubic(t)));
-            }, null, 0.08f);
+                _primaryRt.anchoredPosition = new Vector2(0f, _primaryY + Mathf.Lerp(-24f, 0f, Ease.OutCubic(t)));
+            }, null, 0.06f);
 
-            if (state.NewlyCuredFrom >= 0) ShowToast("NEW SAMPLE CURED");
+            if (state.NewlyCuredFrom >= 0) ShowToast("home_new_sample_cured");
             else HideToast();
         }
 
@@ -96,200 +141,219 @@ namespace CozyLab.Puzzle.UI
 
         private void Apply(HomeState state)
         {
-            _experimentLabel.text = state.ExperimentLabel;
-            _dish.SetProgress(state.Cured, state.NewlyCuredFrom);
+            _cured = Mathf.Clamp(state.Cured, 0, state.Total);
+            _research.SetValue(state.Research, animate: false);
+            _coins.SetValue(0, animate: false); // Coins are not implemented yet: placeholder slot.
+            _labBadge.SetVisible(state.UpgradeAvailable);
 
-            if (state.Cured >= state.Total && state.Total > 0)
+            // Bound texts: they re-render by themselves if the language changes while Home is visible.
+            bool complete = state.Total > 0 && state.Cured >= state.Total;
+            if (complete)
             {
                 CurrentAction = PrimaryAction.ViewResults;
-                PrimaryLabel = "VIEW RESULTS";
-                _supportTitle.text = "Experiment complete";
-                _supportLine.text = $"{state.ExperimentTitle}  ·  {state.Total} / {state.Total} cured";
-            }
-            else if (state.Cured == 0)
-            {
-                CurrentAction = PrimaryAction.Begin;
-                PrimaryLabel = "BEGIN EXPERIMENT";
-                _supportTitle.text = state.ExperimentTitle;
-                _supportLine.text = "Your first experiment";
+                _clipHeader.Localize("home_experiment_complete");
+                _clipTitle.Localize(state.ExperimentTitle);
+                _clipLevel.Localize("home_all_cured", state.Total);
             }
             else
             {
-                CurrentAction = PrimaryAction.Continue;
-                PrimaryLabel = "CONTINUE";
-                _supportTitle.text = $"Level {state.NextLevelNumber}  ·  {state.NextLevelTitle}";
-                _supportLine.text = state.ExperimentTitle;
+                CurrentAction = state.Cured == 0 ? PrimaryAction.Begin : PrimaryAction.Continue;
+                _clipHeader.Localize("home_current_sample");
+                _clipTitle.Localize(state.NextLevelTitle);
+                _clipLevel.Localize("home_level", state.NextLevelNumber);
             }
-            UIButtons.SetLabel(_primary, PrimaryLabel);
+            UIButtons.SetLabelKey(_primary, CurrentAction == PrimaryAction.ViewResults ? "home_view_results"
+                : CurrentAction == PrimaryAction.Begin ? "home_begin" : "home_continue");
+            ApplyDots(state);
+        }
 
-            if (state.MicroscopeLevel != _shownMicroscopeLevel)
+        private void ApplyDots(HomeState state)
+        {
+            if (_progressDots.Length != state.Total)
             {
-                UIFactory.DestroyChildren(_labObjectHolder);
-                LabArt.Microscope(_labObjectHolder, _theme, state.MicroscopeLevel, 250f);
-                _shownMicroscopeLevel = state.MicroscopeLevel;
+                UIFactory.DestroyChildren(_dotsRow);
+                _progressDots = new Image[state.Total];
+                const float spacing = 26f;
+                for (int i = 0; i < state.Total; i++)
+                    _progressDots[i] = UIFactory.CreateSpriteImage("Dot", _dotsRow, ProceduralSprites.Circle, new Vector2(16f, 16f),
+                        Color.white, new Vector2((i - (state.Total - 1) * 0.5f) * spacing, 0f));
+            }
+            for (int i = 0; i < _progressDots.Length; i++)
+            {
+                bool cured = i < state.Cured;
+                bool current = !cured && i == state.Cured;
+                _progressDots[i].color = cured ? _theme.GetPieceColor(i)
+                    : current ? MetaStyle.Teal
+                    : new Color(MetaStyle.Petrol.r, MetaStyle.Petrol.g, MetaStyle.Petrol.b, 0.18f);
+                _progressDots[i].rectTransform.sizeDelta = Vector2.one * (current ? 20f : 16f);
             }
         }
 
         // ---------------------------------------------------------------- build
 
-        private const float PrimaryY = -560f;
-
-        private void Build(int levelCount, string experimentTitle)
+        private void Build()
         {
             _root = new GameObject("Home");
             _root.transform.SetParent(transform, false);
 
             var canvasRoot = ScreenCanvas.Create("HomeCanvas", _root.transform, referenceResolution, sortingOrder: 0);
             _group = canvasRoot.gameObject.AddComponent<CanvasGroup>();
-            BuildDesk(canvasRoot);
+            var frame = BuildBackground(canvasRoot);
+            BuildClipboard();
+            BuildToast();
 
             var safe = ScreenCanvas.AddSafeArea(canvasRoot);
             _content = safe;
+            BuildStatusBar(safe);
+            BuildBottom(safe);
 
-            // Wordmark.
-            // Portrait column: wordmark / hero column (label, dish, next level, primary) / desk-object row.
-            const float headerHeight = 120f;
-            const float deskRowHeight = 400f;
-
-            var header = Band(safe, "Header", top: true, height: headerHeight);
-            var mark = UIFactory.CreateText("Wordmark", header, "COZYLAB", 36, _theme.accentColor, TextAnchor.MiddleCenter,
-                FontStyle.Bold);
-            UIFactory.Stretch(mark.rectTransform);
-
-            var deskRow = Band(safe, "DeskRow", top: false, height: deskRowHeight);
-            BuildDeskRow(deskRow);
-
-            // The hero column is designed for a tall phone and scales to fill whatever height is left,
-            // so there are no dead bands on tall screens and nothing clips on 16:9.
-            var heroArea = UIFactory.CreateStretched("HeroArea", safe);
-            heroArea.offsetMin = new Vector2(0f, deskRowHeight);
-            heroArea.offsetMax = new Vector2(0f, -headerHeight);
-            var hero = UIFactory.CreateRect("Hero", heroArea);
-            hero.gameObject.AddComponent<FitToParentScaler>().Configure(new Vector2(1080f, 1560f), 1.2f);
-
-            _experimentLabel = UIFactory.CreateText("ExperimentLabel", hero, "EXPERIMENT 01", 34, _theme.textSecondaryColor,
-                TextAnchor.MiddleCenter, FontStyle.Bold);
-            Place(_experimentLabel.rectTransform, new Vector2(700f, 60f), new Vector2(0f, 730f));
-
-            var dishRt = UIFactory.CreateCentered("ExperimentDish", hero, Vector2.zero, new Vector2(0f, 250f));
-            _dish = dishRt.gameObject.AddComponent<ExperimentDishView>();
-            _dish.Build(_theme, 880f, levelCount, experimentTitle, showLabels: true, ambient: true);
-
-            // Brief acknowledgement pill between the dish and the next-level text.
-            _toast = UIFactory.CreateCentered("NewSampleToast", hero, new Vector2(440f, 76f), new Vector2(0f, -238f));
-            _toastGroup = _toast.gameObject.AddComponent<CanvasGroup>();
-            _toastGroup.blocksRaycasts = false;
-            UIFactory.CreateRoundedImage("Body", _toast, new Vector2(440f, 76f), 38f, _theme.cardColor);
-            var toastText = UIFactory.CreateText("Text", _toast, string.Empty, 30, _theme.accentColor, TextAnchor.MiddleCenter,
-                FontStyle.Bold);
-            UIFactory.Stretch(toastText.rectTransform);
-            _toast.gameObject.SetActive(false);
-
-            _supportTitle = UIFactory.CreateText("SupportTitle", hero, string.Empty, 46, _theme.textPrimaryColor,
-                TextAnchor.MiddleCenter, FontStyle.Bold);
-            Place(_supportTitle.rectTransform, new Vector2(960f, 64f), new Vector2(0f, -330f));
-            _supportLine = UIFactory.CreateText("SupportLine", hero, string.Empty, 34, _theme.textSecondaryColor);
-            Place(_supportLine.rectTransform, new Vector2(960f, 52f), new Vector2(0f, -392f));
-
-            _primary = UIButtons.CreatePill("PrimaryButton", hero, "CONTINUE", new Vector2(720f, 176f), new Vector2(0f, PrimaryY),
-                _theme.accentColor, Color.white, 58);
-            _primaryRt = (RectTransform)_primary.transform;
-            _primary.onClick.AddListener(() => PrimaryClicked?.Invoke());
+            // Lift the art just enough for the dish to clear CONTINUE, without the clipboard meeting the status bar.
+            _artFramer = frame.gameObject.AddComponent<HomeArtFramer>();
+            _artFramer.Configure(safe, ArtAspect, _primaryY + PrimaryHeight * 0.5f + 8f, StatusBarHeight);
 
             _root.SetActive(false);
         }
 
-        /// <summary>Experiments (sample tray) and Lab (microscope) as desk objects above the bottom safe edge.</summary>
-        private void BuildDeskRow(RectTransform row)
+        private float ArtAspect => _background != null ? _background.rect.width / _background.rect.height : 9f / 16f;
+
+        /// <summary>
+        /// The authored plate, cover-fitted (uniform scale, outer edges cropped) inside a frame that the
+        /// <see cref="HomeArtFramer"/> scales about the bottom edge, plus soft top/bottom scrims.
+        /// </summary>
+        private RectTransform BuildBackground(RectTransform canvasRoot)
         {
-            var trayRt = DeskObject(row, "ExperimentsObject", "EXPERIMENTS", new Vector2(-250f, 215f), out var trayVisual);
-            LabArt.SampleTray(trayVisual, _theme, 250f, 4);
-            TapTarget.Attach(trayRt, trayVisual).Clicked += () => ExperimentsClicked?.Invoke();
+            var bg = UIFactory.CreateStretched("Background", canvasRoot);
+            UIFactory.AddImage(bg, _theme.deskWoodColor);
 
-            var labRt = DeskObject(row, "LabObject", "LAB", new Vector2(250f, 215f), out var labVisual);
-            _labObjectHolder = labVisual;
-            TapTarget.Attach(labRt, labVisual).Clicked += () => LabClicked?.Invoke();
-        }
-
-        /// <summary>A soft desk coaster with an object on it and a label underneath (340 × 340 touch area).</summary>
-        private RectTransform DeskObject(RectTransform parent, string name, string label, Vector2 position, out RectTransform visual)
-        {
-            var rt = UIFactory.CreateRect(name, parent);
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
-            rt.sizeDelta = new Vector2(340f, 340f);
-            rt.anchoredPosition = position;
-
-            visual = UIFactory.CreateCentered("Visual", rt, new Vector2(340f, 280f), new Vector2(0f, 25f));
-            UIFactory.CreateSpriteImage("Coaster", visual, ProceduralSprites.SoftGlow, new Vector2(360f, 190f),
-                new Color(1f, 1f, 1f, 0.9f), new Vector2(0f, -70f));
-
-            var text = UIFactory.CreateText("Label", rt, label, 32, _theme.textPrimaryColor, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Place(text.rectTransform, new Vector2(340f, 48f), new Vector2(0f, -145f));
-            return rt;
-        }
-        private void BuildDesk(RectTransform canvasRoot)
-        {
-            // The whole screen is the bench mat seen from above: soft mint with a faint measuring grid.
-            var bg = UIFactory.CreateStretched("Desk", canvasRoot);
-            UIFactory.AddImage(bg, _theme.deskMatColor);
-            for (int i = -6; i <= 6; i++)
+            var frame = UIFactory.CreateStretched("ArtFrame", bg);
+            frame.pivot = new Vector2(0.5f, 0f);
+            _art = UIFactory.CreateRect("HomeArt", frame);
+            _art.anchorMin = _art.anchorMax = _art.pivot = new Vector2(0.5f, 0.5f);
+            var fitter = _art.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fitter.aspectRatio = ArtAspect;
+            if (_background != null)
             {
-                var v = UIFactory.CreateRect("GridV", bg);
-                v.anchorMin = new Vector2(0.5f, 0f);
-                v.anchorMax = new Vector2(0.5f, 1f);
-                v.sizeDelta = new Vector2(3f, 0f);
-                v.anchoredPosition = new Vector2(i * 180f, 0f);
-                UIFactory.AddImage(v, _theme.deskGridColor);
-            }
-            for (int i = -9; i <= 9; i++)
-            {
-                var h = UIFactory.CreateRect("GridH", bg);
-                h.anchorMin = new Vector2(0f, 0.5f);
-                h.anchorMax = new Vector2(1f, 0.5f);
-                h.sizeDelta = new Vector2(0f, 3f);
-                h.anchoredPosition = new Vector2(0f, i * 180f);
-                UIFactory.AddImage(h, _theme.deskGridColor);
+                var image = UIFactory.AddImage(_art, Color.white);
+                image.sprite = _background;
             }
 
-            // A couple of props bleeding off the edges make it read as a real workbench.
-            var notebook = UIFactory.CreateRect("Notebook", bg);
-            notebook.anchorMin = notebook.anchorMax = new Vector2(1f, 1f);
-            notebook.sizeDelta = new Vector2(360f, 440f);
-            notebook.anchoredPosition = new Vector2(-40f, -150f);
-            notebook.localRotation = Quaternion.Euler(0f, 0f, -14f);
-            UIFactory.CreateShadow("Shadow", notebook, new Vector2(360f, 440f), 30f, new Color(0.1f, 0.2f, 0.24f, 0.16f),
-                new Vector2(0f, -12f));
-            UIFactory.CreateRoundedImage("Cover", notebook, new Vector2(360f, 440f), 26f, _theme.cardColor);
-            for (int i = 0; i < 5; i++)
-                UIFactory.CreateRoundedImage("Line", notebook, new Vector2(230f, 8f), 4f,
-                    new Color(_theme.boardRimColor.r, _theme.boardRimColor.g, _theme.boardRimColor.b, 0.9f),
-                    new Vector2(-20f, 90f - i * 50f));
-            var pencil = UIFactory.CreateRoundedImage("Pencil", notebook, new Vector2(26f, 300f), 13f, _theme.GetPieceColor(3),
-                new Vector2(-170f, -10f));
-            pencil.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 8f);
-
-            var tubes = UIFactory.CreateRect("Tubes", bg);
-            tubes.anchorMin = tubes.anchorMax = new Vector2(0f, 1f);
-            tubes.sizeDelta = new Vector2(300f, 300f);
-            tubes.anchoredPosition = new Vector2(60f, -330f);
-            tubes.localRotation = Quaternion.Euler(0f, 0f, 28f);
-            for (int i = 0; i < 3; i++)
-            {
-                var tube = UIFactory.CreateCentered("Tube", tubes, new Vector2(58f, 280f), new Vector2((i - 1) * 78f, 0f));
-                UIFactory.CreateShadow("Shadow", tube, new Vector2(58f, 280f), 14f, new Color(0.1f, 0.2f, 0.24f, 0.14f),
-                    new Vector2(0f, -8f));
-                UIFactory.CreateRoundedImage("Glass", tube, new Vector2(58f, 280f), 29f, new Color(1f, 1f, 1f, 0.92f));
-                UIFactory.CreateRoundedImage("Liquid", tube, new Vector2(42f, 120f), 21f, _theme.GetPieceColor(i + 4),
-                    new Vector2(0f, -70f));
-                UIFactory.CreateRoundedImage("Cap", tube, new Vector2(64f, 34f), 12f, _theme.GetPieceColor(i + 4),
-                    new Vector2(0f, 128f));
-            }
+            // Gentle darkening at the very top and bottom keeps pills and tiles readable without dulling the hero.
+            var top = UIFactory.CreateStretched("TopScrim", bg);
+            top.anchorMin = new Vector2(0f, 0.88f);
+            UIFactory.AddImage(top, new Color(0.16f, 0.09f, 0.04f, 0.32f)).sprite = ProceduralSprites.VerticalFade;
+            var bottom = UIFactory.CreateStretched("BottomScrim", bg);
+            bottom.anchorMax = new Vector2(1f, 0.34f);
+            var bottomImage = UIFactory.AddImage(bottom, new Color(0.16f, 0.09f, 0.04f, 0.3f));
+            bottomImage.sprite = ProceduralSprites.VerticalFade;
+            bottom.localScale = new Vector3(1f, -1f, 1f); // opaque edge at the bottom
+            return frame;
         }
 
-        private void ShowToast(string message)
+        /// <summary>Current Sample text on the blank clipboard, anchored to the paper inside the art.</summary>
+        private void BuildClipboard()
+        {
+            var paper = UIFactory.CreateRect("ClipboardPaper", _art);
+            paper.anchorMin = ClipboardPaper.min;
+            paper.anchorMax = ClipboardPaper.max;
+            paper.offsetMin = paper.offsetMax = Vector2.zero;
+
+            var clip = UIFactory.CreateRect("ClipboardText", paper);
+            clip.gameObject.AddComponent<FitToParentScaler>().Configure(ClipboardDesign, 3f);
+
+            _clipHeader = UIFactory.CreateText("Header", clip, string.Empty, 25, MetaStyle.Petrol, TextAnchor.MiddleCenter, FontStyle.Bold);
+            CureUI.FitLabel(_clipHeader, 25);
+            MetaStyle.Place(_clipHeader.rectTransform, new Vector2(400f, 34f), new Vector2(0f, 72f));
+            UIFactory.CreateRoundedImage("Rule", clip, new Vector2(230f, 3f), 1.5f,
+                new Color(MetaStyle.Petrol.r, MetaStyle.Petrol.g, MetaStyle.Petrol.b, 0.25f), new Vector2(0f, 50f));
+
+            _clipTitle = UIFactory.CreateText("Title", clip, string.Empty, 44, MetaStyle.Charcoal, TextAnchor.MiddleCenter, FontStyle.Bold);
+            MetaStyle.Place(_clipTitle.rectTransform, new Vector2(410f, 60f), new Vector2(0f, 12f));
+            _clipTitle.resizeTextForBestFit = true;
+            _clipTitle.resizeTextMinSize = 28;
+            _clipTitle.resizeTextMaxSize = 44;
+            _clipTitle.verticalOverflow = VerticalWrapMode.Truncate;
+
+            _clipLevel = UIFactory.CreateText("Level", clip, string.Empty, 30, MetaStyle.Petrol, TextAnchor.MiddleCenter);
+            CureUI.FitLabel(_clipLevel, 30);
+            MetaStyle.Place(_clipLevel.rectTransform, new Vector2(400f, 40f), new Vector2(0f, -38f));
+
+            _dotsRow = UIFactory.CreateCentered("Progress", clip, new Vector2(300f, 24f), new Vector2(0f, -78f));
+        }
+
+        private void BuildToast()
+        {
+            var anchor = UIFactory.CreateRect("ToastAnchor", _art);
+            anchor.anchorMin = anchor.anchorMax = DishTop;
+            anchor.sizeDelta = Vector2.zero;
+            _toast = UIFactory.CreateCentered("NewSampleToast", anchor, new Vector2(420f, 72f));
+            _toastGroup = _toast.gameObject.AddComponent<CanvasGroup>();
+            _toastGroup.blocksRaycasts = false;
+            UIFactory.CreateShadow("Shadow", _toast, new Vector2(420f, 72f), 16f, MetaStyle.WarmShadow, new Vector2(0f, -6f));
+            UIFactory.CreateRoundedImage("Body", _toast, new Vector2(420f, 72f), 36f, new Color(MetaStyle.Ivory.r, MetaStyle.Ivory.g, MetaStyle.Ivory.b, 0.95f));
+            var text = UIFactory.CreateText("Text", _toast, string.Empty, 28, MetaStyle.TealDark, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UIFactory.Stretch(text.rectTransform);
+            text.rectTransform.offsetMin = new Vector2(16f, 0f);
+            text.rectTransform.offsetMax = new Vector2(-16f, 0f);
+            CureUI.FitLabel(text, 28);
+            _toast.gameObject.SetActive(false);
+        }
+
+        /// <summary>Settings (left), Coins and Research glass pills with authored icons and "+" actions.</summary>
+        private void BuildStatusBar(RectTransform safe)
+        {
+            var bar = MetaStyle.TopBand(safe, StatusBarHeight);
+
+            var settings = CureUI.SettingsButton(bar);
+            var settingsRt = (RectTransform)settings.transform;
+            settingsRt.anchorMin = settingsRt.anchorMax = new Vector2(0f, 0.5f);
+            settingsRt.anchoredPosition = new Vector2(36f + 46f, 0f);
+            settings.onClick.AddListener(() => SettingsClicked?.Invoke());
+
+            _coins = CureUI.CurrencyPill("CoinsPill", bar, 350f, new Vector2(0f, 0.5f), new Vector2(170f + 175f, 0f), _icons.coin, _icons.add);
+            _coins.Plus.onClick.AddListener(() => ShopClicked?.Invoke());
+            _research = CureUI.CurrencyPill("ResearchPill", bar, 350f, new Vector2(1f, 0.5f), new Vector2(-52f - 175f, 0f), _icons.research,
+                _icons.add);
+            _research.Plus.onClick.AddListener(() => ExperimentsClicked?.Invoke()); // earn Research by curing samples
+        }
+
+        /// <summary>CONTINUE above a 2×2 block of beveled menu tiles, laid out bottom-up in the free desk area.</summary>
+        private void BuildBottom(RectTransform safe)
+        {
+            var bottom = UIFactory.CreateRect("Bottom", safe);
+            bottom.anchorMin = bottom.anchorMax = new Vector2(0.5f, 0f);
+            bottom.pivot = new Vector2(0.5f, 0f);
+            bottom.sizeDelta = new Vector2(1080f, 0f);
+
+            float x = (TileWidth + TileGap) * 0.5f;
+            float lowY = BottomMargin + TileRowLow * 0.5f;
+            float highY = BottomMargin + TileRowLow + TileGap + TileRowHigh * 0.5f;
+            var high = new Vector2(TileWidth, TileRowHigh);
+            var low = new Vector2(TileWidth, TileRowLow);
+
+            var experiments = CureUI.NavigationCard("ExperimentsButton", bottom, "home_experiments", high, new Vector2(-x, highY),
+                _icons.experiments, 158f, 38);
+            experiments.onClick.AddListener(() => ExperimentsClicked?.Invoke());
+            var lab = CureUI.NavigationCard("LabButton", bottom, "home_lab", high, new Vector2(x, highY), _icons.lab, 158f, 38);
+            lab.onClick.AddListener(() => LabClicked?.Invoke());
+            _labBadge = CureUI.Badge(lab.transform, 50f, new Vector2(TileWidth * 0.5f - 20f, TileRowHigh * 0.5f - 16f));
+
+            var daily = CureUI.NavigationCard("DailyButton", bottom, "home_daily", low, new Vector2(-x, lowY), _icons.daily, 108f, 34);
+            daily.onClick.AddListener(() => DailyClicked?.Invoke());
+            var shop = CureUI.NavigationCard("ShopButton", bottom, "home_shop", low, new Vector2(x, lowY), _icons.shop, 108f, 34);
+            shop.onClick.AddListener(() => ShopClicked?.Invoke());
+
+            _primaryY = highY + TileRowHigh * 0.5f + PrimaryGap + PrimaryHeight * 0.5f;
+            _primary = CureUI.PrimaryButton("PrimaryButton", bottom, "home_continue", new Vector2(640f, PrimaryHeight),
+                new Vector2(0f, _primaryY), 60);
+            _primaryRt = (RectTransform)_primary.transform;
+            _primary.onClick.AddListener(() => PrimaryClicked?.Invoke());
+        }
+
+        private void ShowToast(string key)
         {
             Tween.Stop(this, ref _toastRoutine);
-            _toast.GetComponentInChildren<Text>().text = message;
+            _toast.GetComponentInChildren<Text>().Localize(key);
             _toast.gameObject.SetActive(true);
             _toastGroup.alpha = 0f;
             _toastRoutine = Tween.Run(this, 2.4f, Ease.Linear, t =>
@@ -305,24 +369,6 @@ namespace CozyLab.Puzzle.UI
         {
             Tween.Stop(this, ref _toastRoutine);
             if (_toast != null) _toast.gameObject.SetActive(false);
-        }
-
-        private static RectTransform Band(RectTransform parent, string name, bool top, float height)
-        {
-            var rt = UIFactory.CreateRect(name, parent);
-            rt.anchorMin = new Vector2(0f, top ? 1f : 0f);
-            rt.anchorMax = new Vector2(1f, top ? 1f : 0f);
-            rt.pivot = new Vector2(0.5f, top ? 1f : 0f);
-            rt.sizeDelta = new Vector2(0f, height);
-            rt.anchoredPosition = Vector2.zero;
-            return rt;
-        }
-
-        private static void Place(RectTransform rt, Vector2 size, Vector2 position)
-        {
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = size;
-            rt.anchoredPosition = position;
         }
     }
 }

@@ -4,6 +4,7 @@ using CozyLab.Puzzle.Core;
 using CozyLab.Puzzle.Data;
 using CozyLab.Puzzle.Feedback;
 using CozyLab.Puzzle.Interaction;
+using CozyLab.Puzzle.Localization;
 using CozyLab.Puzzle.Presentation;
 using CozyLab.Puzzle.UI;
 using UnityEngine;
@@ -291,20 +292,31 @@ namespace CozyLab.Puzzle.Gameplay
 
         private void PlayPlacementEffects(PieceState piece, Vector3 pieceCenter, Color color)
         {
-            var light = Color.Lerp(color, Color.white, 0.45f);
+            var light = Color.Lerp(color, new Color(1f, 0.94f, 0.78f), 0.25f);
             _board.FlashCells(piece.Shape, piece.Origin, light);
 
             float cell = _board.CellSize;
-            var ringColor = new Color(light.r, light.g, light.b, 0.7f);
-            foreach (var c in piece.Shape.Cells)
-                _particles.Ripple(_board.CellCenterWorld(piece.Origin + c), ringColor, cell * 0.75f, cell * 1.3f, 0.45f);
-
-            _particles.BubbleBurst(pieceCenter, color, 8, _board.Pitch * 1.6f, _board.Pitch * 0.15f, _board.Pitch * 0.3f);
+            var ringColor = new Color(light.r, light.g, light.b, 0.23f);
+            _particles.Ripple(pieceCenter, ringColor, cell * 0.65f, cell * 1.12f, 0.6f);
+            // Two small, slowly rising bubbles instead of a radial burst on every cell.
+            for (int i = 0; i < 2; i++)
+            {
+                var offset = _board.GridRoot.TransformVector(new Vector3((i == 0 ? -0.26f : 0.23f) * cell, cell * 0.18f, 0f));
+                _particles.Emit(pieceCenter + offset, new Vector2(i == 0 ? -3f : 3f, 9f),
+                    cell * 0.065f, cell * 0.09f, 0.7f, new Color(1f, 0.96f, 0.83f, 0.42f),
+                    ProceduralSprites.Ring, buoyancy: 4f);
+            }
         }
+
+        private static string ComboKey(int tier) =>
+            tier >= PlacementStreak.TierPerfect ? "gameplay_combo_perfect"
+            : tier == PlacementStreak.TierGreat ? "gameplay_combo_great"
+            : "gameplay_combo_good";
 
         private void ShowCombo(int tier, Vector3 pieceCenter)
         {
-            string label = _theme.GetComboLabel(tier);
+            string themed = _theme.GetComboLabel(tier); // null: this tier shows nothing
+            string label = string.IsNullOrEmpty(themed) ? null : Loc.GetOr(ComboKey(tier), themed);
             if (string.IsNullOrEmpty(label)) return;
             var color = tier >= PlacementStreak.TierPerfect ? _theme.comboPerfectColor : _theme.comboColor;
             float scale = tier >= PlacementStreak.TierPerfect ? 1.15f : tier == PlacementStreak.TierGreat ? 1.05f : 0.95f;
@@ -391,7 +403,7 @@ namespace CozyLab.Puzzle.Gameplay
                 if (piece.IsPlaced) placed++;
             }
             _hud.SetProgress(placed, _session.Pieces.Count);
-            _hud.SetUndoInteractable(_session.CanUndo);
+            _hud.SetUndoState(_session.CanUndo, _session.UndoCount);
         }
     }
 }

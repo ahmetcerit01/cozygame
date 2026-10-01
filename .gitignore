@@ -78,3 +78,7 @@ desktop.ini
 .env.*
 google-services.json
 GoogleService-Info.plist
+
+# Unity crash recovery
+Assets/_Recovery/
+Assets/_Recovery.meta

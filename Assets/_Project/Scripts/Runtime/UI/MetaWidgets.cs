@@ -61,7 +61,7 @@ namespace CozyLab.Puzzle.UI
             if (!animate || !isActiveAndEnabled)
             {
                 _shown = value;
-                _text.text = value.ToString();
+                _text.text = Localization.Loc.Number(value);
                 _pop.localScale = Vector3.one;
                 return;
             }
@@ -70,13 +70,13 @@ namespace CozyLab.Puzzle.UI
             _routine = Tween.Run(this, 0.55f, Ease.Linear, t =>
             {
                 _shown = Mathf.RoundToInt(Mathf.Lerp(from, value, Ease.OutCubic(t)));
-                _text.text = _shown.ToString();
+                _text.text = Localization.Loc.Number(_shown);
                 float s = 1f + 0.12f * Mathf.Sin(Mathf.Clamp01(t * 1.6f) * Mathf.PI);
                 _pop.localScale = new Vector3(s, s, 1f);
             }, () =>
             {
                 _shown = value;
-                _text.text = value.ToString();
+                _text.text = Localization.Loc.Number(value);
                 _pop.localScale = Vector3.one;
             });
         }

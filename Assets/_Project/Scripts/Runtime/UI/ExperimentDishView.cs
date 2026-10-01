@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using CozyLab.Puzzle.Data;
+using CozyLab.Puzzle.Localization;
 using CozyLab.Puzzle.Presentation;
 using UnityEngine;
 using UnityEngine.UI;
@@ -30,7 +31,7 @@ namespace CozyLab.Puzzle.UI
         public int ColonyCount => _colonies.Count;
         public string StatusText => _status != null ? _status.text : string.Empty;
 
-        public void Build(PuzzleTheme theme, float size, int colonyCount, string title, bool showLabels, bool ambient)
+        public void Build(PuzzleTheme theme, float size, int colonyCount, LocString title, bool showLabels, bool ambient)
         {
             _theme = theme;
             _size = size;
@@ -88,9 +89,10 @@ namespace CozyLab.Puzzle.UI
 
             if (showLabels)
             {
-                _title = UIFactory.CreateText("Title", _visual, title.ToUpperInvariant(), Mathf.RoundToInt(size * 0.056f),
+                _title = UIFactory.CreateText("Title", _visual, string.Empty, Mathf.RoundToInt(size * 0.056f),
                     theme.textPrimaryColor, TextAnchor.MiddleCenter, FontStyle.Bold);
                 Place(_title.rectTransform, new Vector2(size * 0.5f, size * 0.1f), new Vector2(0f, size * 0.04f));
+                _title.Localize(title, TextCase.Upper);
                 _status = UIFactory.CreateText("Status", _visual, string.Empty, Mathf.RoundToInt(size * 0.046f), theme.accentColor,
                     TextAnchor.MiddleCenter, FontStyle.Bold);
                 Place(_status.rectTransform, new Vector2(size * 0.57f, size * 0.09f), new Vector2(0f, -size * 0.05f));
@@ -120,7 +122,8 @@ namespace CozyLab.Puzzle.UI
             }
 
             if (_status != null)
-                _status.text = complete ? "EXPERIMENT COMPLETE" : $"{_cured} / {_colonies.Count} CURED";
+                if (complete) _status.Localize("home_experiment_complete");
+                else _status.Localize("experiments_progress_caps", _cured, _colonies.Count);
 
             var c = _theme.accentColor;
             _completeGlow.color = new Color(c.r, c.g, c.b, complete ? 0.35f : 0f);

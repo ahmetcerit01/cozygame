@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CozyLab.Puzzle.Data;
 using CozyLab.Puzzle.Feedback;
 using CozyLab.Puzzle.Gameplay;
+using CozyLab.Puzzle.Localization;
 using CozyLab.Puzzle.Meta;
 using CozyLab.Puzzle.Progression;
 using CozyLab.Puzzle.UI;
@@ -14,8 +15,10 @@ namespace CozyLab.Puzzle.Flow
     /// progression. Puzzle progression unlocks puzzles; the optional Lab (Research, equipment) never gates them.
     ///
     ///   Launch → Home → CONTINUE → Puzzle
-    ///   Home → Experiments → Virus Samples → Level Select → Puzzle
-    ///   Home ⇄ Lab
+    ///   Home: authored desk with CONTINUE + Experiments / Lab / Daily / Shop tiles (no tab bar).
+    ///   Tab bar (Experiments · Home · Lab) on the other meta screens; hidden during gameplay.
+    ///   Experiments tab → sample rack (Level Select) → Puzzle;  rack "ALL" → Experiments journal
+    ///   Puzzle LEVELS → sample rack
     /// </summary>
     public sealed class GameFlow : MonoBehaviour
     {
@@ -37,7 +40,39 @@ namespace CozyLab.Puzzle.Flow
         [SerializeField] private HomeScreen home;
         [SerializeField] private ExperimentsScreen experiments;
         [SerializeField] private LabScreen lab;
+        [Tooltip("Authored Home art (Assets/Art/Home/Home_CleanPlate.png), handed to the Home screen at startup.")]
+        [SerializeField] private Sprite homeBackground;
+        [Tooltip("Authored Home UI icons (Assets/Art/UI/Icons), handed to the Home screen at startup.")]
+        [SerializeField] private HomeIcons homeIcons;
         [SerializeField] private int targetFrameRate = 60;
+
+#if UNITY_EDITOR
+        public const string HomeBackgroundPath = "Assets/Art/Home/Home_CleanPlate.png";
+        private const string IconFolder = "Assets/Art/UI/Icons/";
+
+        // Keeps the references filled even if the scene was open (in memory) when the fields were added on disk.
+        private void OnValidate()
+        {
+            if (homeBackground == null) homeBackground = Load(HomeBackgroundPath);
+            Fill(ref homeIcons.coin, "ui_icon_coin");
+            Fill(ref homeIcons.research, "ui_icon_research");
+            Fill(ref homeIcons.add, "ui_icon_add");
+            Fill(ref homeIcons.settings, "ui_icon_settings");
+            Fill(ref homeIcons.experiments, "ui_icon_experiments");
+            Fill(ref homeIcons.lab, "ui_icon_labs");
+            Fill(ref homeIcons.daily, "ui_icon_daily");
+            Fill(ref homeIcons.shop, "ui_icon_shop");
+        }
+
+        private static void Fill(ref Sprite sprite, string icon)
+        {
+            if (sprite == null) sprite = Load(IconFolder + icon + ".png");
+        }
+
+        private static Sprite Load(string path) => UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
+
+        private void Reset() => OnValidate();
+#endif
 
         /// <summary>Tests can inject an isolated store before the scene loads.</summary>
         public static IProgressStore StoreOverride { get; set; }
@@ -53,6 +88,8 @@ namespace CozyLab.Puzzle.Flow
         public HomeScreen Home => home;
         public ExperimentsScreen Experiments => experiments;
         public LabScreen Lab => lab;
+        public MetaNavBar NavBar => _nav;
+        public MetaDialog Dialog => _dialog;
         public FlowScreen CurrentScreen { get; private set; }
         /// <summary>Index of the level open in the puzzle screen (or last played), -1 if none.</summary>
         public int CurrentLevelIndex { get; private set; } = -1;
@@ -61,7 +98,8 @@ namespace CozyLab.Puzzle.Flow
 
         private ExperimentInfo _experiment;
         private PuzzleFeedback _feedback;
-        private FlowScreen _levelSelectReturn = FlowScreen.Experiments;
+        private MetaNavBar _nav;
+        private MetaDialog _dialog;
         private int _curedAtLastHome = -1;
         private int _pendingMilestoneResearch;
         private bool _pendingMilestone;
@@ -69,7 +107,13 @@ namespace CozyLab.Puzzle.Flow
         private void Awake()
         {
             Active = this;
+            // Before any screen builds: pick the language (saved choice, else device language) and share icons.
+            Loc.EnsureInitialized();
+            CureUI.Icons = homeIcons;
         }
+
+        private static System.Action<RectTransform, float, Color> SpriteIcon(Sprite sprite) =>
+            (rt, size, _) => CureUI.SpriteIcon(rt, "Icon", sprite, size * 1.2f, Vector2.zero);
 
         private void OnDestroy()
         {
@@ -120,26 +164,52 @@ namespace CozyLab.Puzzle.Flow
             levelSelect.Initialize(catalog, Progression, theme);
             levelSelect.PlayRequested += index => TryOpenLevel(index);
             levelSelect.DevResetRequested += ResetProgress;
-            levelSelect.BackRequested += () => Navigate(_levelSelectReturn);
+            levelSelect.BackRequested += () => { Select(); ShowExperiments(); };
             levelSelect.MilestoneHomeRequested += () => ShowHome();
             levelSelect.MilestoneLabRequested += () => ShowLab();
 
-            home.Initialize(theme, catalog.Count, catalog.ChapterSubtitle);
-            home.PrimaryClicked += OnHomePrimary;
-            home.ExperimentsClicked += () => { Select(); ShowExperiments(); };
+            // Shared front-end chrome: one tab bar and one placeholder dialog for all meta screens.
+            var reference = ScreenCanvas.DefaultReferenceResolution;
+            _nav = new GameObject("MetaNavBar").AddComponent<MetaNavBar>();
+            _nav.transform.SetParent(transform, false);
+            _nav.Initialize(reference);
+            _nav.TabClicked += OnTabClicked;
+            _dialog = new GameObject("MetaDialog").AddComponent<MetaDialog>();
+            _dialog.transform.SetParent(transform, false);
+            _dialog.Initialize(reference);
+
+            if (homeBackground == null)
+                Debug.LogError("[GameFlow] Assign 'Home Background' (Assets/Art/Home/Home_CleanPlate.png).", this);
+            if (homeIcons.coin == null || homeIcons.add == null || homeIcons.experiments == null)
+                Debug.LogError("[GameFlow] Assign 'Home Icons' (Assets/Art/UI/Icons).", this);
+            home.Initialize(theme, homeBackground, homeIcons);
+            home.SettingsClicked += () =>
+            {
+                Select();
+                _dialog.ShowSettings(null);
+            };
+            home.ExperimentsClicked += () => { Select(); ShowLevelSelect(); };
             home.LabClicked += () => { Select(); ShowLab(); };
+            home.PrimaryClicked += OnHomePrimary;
+            home.DailyClicked += () =>
+            {
+                Select();
+                _dialog.Show("daily_title", "daily_coming_soon", SpriteIcon(homeIcons.daily));
+            };
+            home.ShopClicked += () =>
+            {
+                Select();
+                _dialog.Show("shop_title", "shop_coming_soon", SpriteIcon(homeIcons.shop));
+            };
 
             experiments.Initialize(theme, catalog);
-            experiments.HomeClicked += () => ShowHome();
             experiments.ExperimentClicked += () =>
             {
                 Select();
-                _levelSelectReturn = FlowScreen.Experiments;
                 ShowLevelSelect();
             };
 
             lab.Initialize(theme);
-            lab.HomeClicked += () => ShowHome(fromLab: true);
             lab.EquipmentTapped += _ => _feedback.Emit(PuzzleFeedbackEvent.EquipmentTap);
             lab.UpgradeClicked += OnUpgradeClicked;
 
@@ -167,6 +237,8 @@ namespace CozyLab.Puzzle.Flow
             CurrentLevelIndex = index;
             HideMetaScreens();
             levelSelect.Hide();
+            _nav.Hide();
+            _dialog.Close();
             CurrentScreen = FlowScreen.Puzzle;
             return true;
         }
@@ -177,6 +249,8 @@ namespace CozyLab.Puzzle.Flow
             levelSelect.Hide();
             experiments.Hide();
             lab.Hide();
+            _dialog.Close();
+            _nav.Hide(); // Home has its own navigation tiles
 
             int cured = Progression.CompletedCount;
             int newlyFrom = _curedAtLastHome >= 0 && cured > _curedAtLastHome ? _curedAtLastHome : -1;
@@ -186,15 +260,16 @@ namespace CozyLab.Puzzle.Flow
             var nextLevel = catalog.GetLevel(next);
             home.Show(new HomeState
             {
-                ExperimentLabel = catalog.ChapterTitle.ToUpperInvariant(),
-                ExperimentTitle = catalog.ChapterSubtitle,
+                ExperimentTitle = Loc.ChapterSubtitle(catalog.ChapterId, catalog.ChapterSubtitle),
                 Cured = cured,
                 Total = catalog.Count,
                 NextLevelNumber = Progression.IsChapterComplete ? 0 : next + 1,
-                NextLevelTitle = nextLevel != null ? nextLevel.Title : string.Empty,
+                NextLevelTitle = nextLevel != null ? Loc.LevelTitle(nextLevel.LevelId, nextLevel.Title) : new LocString(null, string.Empty),
                 MicroscopeLevel = Meta.GetLevel(LabEquipment.Microscope),
                 NewlyCuredFrom = newlyFrom,
-            }, fromLab ? 0.9f : 0.98f);
+                Research = Meta.Research,
+                UpgradeAvailable = Meta.CanUpgrade(LabEquipment.Microscope),
+            }, fromLab ? 0.94f : 0.98f);
             CurrentScreen = FlowScreen.Home;
         }
 
@@ -204,7 +279,8 @@ namespace CozyLab.Puzzle.Flow
             levelSelect.Hide();
             home.Hide();
             lab.Hide();
-            experiments.Show(Progression.CompletedCount, catalog.Count);
+            ShowNav(MetaTab.Experiments);
+            experiments.Show(Progression.CompletedCount, catalog.Count, Meta.Research);
             CurrentScreen = FlowScreen.Experiments;
         }
 
@@ -214,6 +290,7 @@ namespace CozyLab.Puzzle.Flow
             levelSelect.Hide();
             home.Hide();
             experiments.Hide();
+            ShowNav(MetaTab.Lab);
 
             var state = BuildLabState();
             // First time an unlock is visible: soft reveal + sound, then remember it.
@@ -236,19 +313,30 @@ namespace CozyLab.Puzzle.Flow
             else if (CurrentLevelIndex >= 0 && !Progression.IsCompleted(CurrentLevelIndex))
                 select = CurrentLevelIndex;
 
+            ShowNav(MetaTab.Experiments);
             levelSelect.Show(select, showMilestone, milestoneResearch);
             CurrentScreen = FlowScreen.LevelSelect;
         }
 
-        private void Navigate(FlowScreen screen)
+        private void OnTabClicked(MetaTab tab)
         {
-            switch (screen)
+            var target = tab == MetaTab.Home ? FlowScreen.Home : tab == MetaTab.Lab ? FlowScreen.Lab : FlowScreen.LevelSelect;
+            if (target == CurrentScreen) return;
+            Select();
+            switch (tab)
             {
-                case FlowScreen.Home: ShowHome(); break;
-                case FlowScreen.Lab: ShowLab(); break;
-                case FlowScreen.LevelSelect: ShowLevelSelect(); break;
-                default: ShowExperiments(); break;
+                case MetaTab.Home: ShowHome(fromLab: CurrentScreen == FlowScreen.Lab); break;
+                case MetaTab.Lab: ShowLab(); break;
+                default: ShowLevelSelect(); break;
             }
+        }
+
+        private void ShowNav(MetaTab tab)
+        {
+            _dialog.Close();
+            _nav.Show(tab);
+            // A quiet nudge that Research can be spent; the Lab itself stays optional.
+            _nav.SetBadge(MetaTab.Lab, Meta.CanUpgrade(LabEquipment.Microscope));
         }
 
         private void HideMetaScreens()
@@ -261,16 +349,9 @@ namespace CozyLab.Puzzle.Flow
         private void OnHomePrimary()
         {
             Select();
-            if (Progression.IsChapterComplete)
-            {
-                // VIEW RESULTS: the (fully cured) Level Select, returning to Home.
-                _levelSelectReturn = FlowScreen.Home;
-                ShowLevelSelect();
-                return;
-            }
-            // BEGIN / CONTINUE: straight into the next incomplete level.
-            _levelSelectReturn = FlowScreen.Experiments;
-            TryOpenLevel(Progression.CurrentLevelIndex);
+            // VIEW RESULTS: the fully cured sample rack. BEGIN / CONTINUE: straight into the next incomplete level.
+            if (Progression.IsChapterComplete) ShowLevelSelect();
+            else TryOpenLevel(Progression.CurrentLevelIndex);
         }
 
         // ---------------------------------------------------------------- puzzle events
@@ -335,6 +416,7 @@ namespace CozyLab.Puzzle.Flow
             var state = BuildLabState();
             lab.Apply(state, animateResearch: true);
             lab.PlayUpgrade();
+            _nav.SetBadge(MetaTab.Lab, Meta.CanUpgrade(LabEquipment.Microscope));
             _feedback.Emit(PuzzleFeedbackEvent.EquipmentUpgrade);
 
             if (!analyzerWasUnlocked && state.AnalyzerUnlocked && Meta.MarkUnlockSeen(LabEquipment.AnalyzerId))
@@ -400,7 +482,10 @@ namespace CozyLab.Puzzle.Flow
                 case FlowScreen.Home: ShowHome(); break;
                 case FlowScreen.Experiments: ShowExperiments(); break;
                 case FlowScreen.LevelSelect: ShowLevelSelect(); break;
-                case FlowScreen.Lab: lab.Apply(BuildLabState(), animateResearch: true); break;
+                case FlowScreen.Lab:
+                    lab.Apply(BuildLabState(), animateResearch: true);
+                    _nav.SetBadge(MetaTab.Lab, Meta.CanUpgrade(LabEquipment.Microscope));
+                    break;
             }
         }
     }

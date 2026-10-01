@@ -1,0 +1,138 @@
+# Cure Cells — Türkçe metin tablosu.
+# Biçim: anahtar = değer   (# yorum, \n = satır sonu, {0} {1} = oyunun doldurduğu değerler)
+# Buradaki anahtarlar en.txt ile birebir aynı olmalı (LocalizationTests kontrol eder).
+
+# ---------------------------------------------------------------- genel
+common_ok = TAMAM
+common_close = KAPAT
+common_back = Geri
+common_coming_soon = Yakında
+
+# ---------------------------------------------------------------- gezinme sekmeleri
+nav_experiments = DENEYLER
+nav_home = ANA SAYFA
+nav_lab = LABORATUVAR
+
+# ---------------------------------------------------------------- ana sayfa
+home_continue = DEVAM ET
+home_begin = BAŞLA
+home_view_results = SONUÇLARI GÖR
+home_experiments = Deneyler
+home_lab = Laboratuvar
+home_daily = Günlük
+home_shop = Mağaza
+home_current_sample = GÜNCEL NUMUNE
+home_experiment_complete = DENEY TAMAMLANDI
+home_level = Seviye {0}
+home_all_cured = {0} numunenin tümü tedavi edildi
+home_new_sample_cured = YENİ NUMUNE TEDAVİ EDİLDİ
+
+# ---------------------------------------------------------------- oynanış
+gameplay_levels = SEVİYELER
+gameplay_undo = GERİ AL
+gameplay_restart = YENİDEN
+gameplay_placed = {0} / {1} yerleşti
+gameplay_level = SEVİYE {0}
+gameplay_combo_good = GÜZEL!
+gameplay_combo_great = HARİKA!
+gameplay_combo_perfect = MÜKEMMEL!
+
+# ---------------------------------------------------------------- seviye tamamlandı
+level_complete_title = TEDAVİ BULUNDU!
+level_complete_subtitle = Tüm numuneler yerleşti. Panzehir stabil.
+level_complete_research = +{0} ARAŞTIRMA
+level_complete_coins = +{0} ALTIN
+level_complete_next = SONRAKİ SEVİYE
+level_complete_finish = BİTİR
+
+# ---------------------------------------------------------------- deneyler (günlük + numune rafı)
+experiments_title = DENEYLER
+experiments_subtitle = Araştırma günlüğün
+experiments_progress = {0} / {1} tedavi edildi
+experiments_progress_caps = {0} / {1} TEDAVİ EDİLDİ
+experiments_progress_complete = {0} / {0} TEDAVİ EDİLDİ  ·  TAMAMLANDI
+experiments_play = OYNA
+experiments_replay = TEKRAR OYNA
+experiments_locked = KİLİTLİ
+experiments_next = SIRADAKİ
+experiments_open = AÇ
+experiments_start = BAŞLA
+experiments_review = İNCELE
+experiments_all = TÜMÜ
+experiments_samples_to_cure = Tedavi edilecek {0} numune
+experiments_soon = YAKINDA
+experiments_arriving_soon = Yeni numuneler yakında geliyor
+experiments_numbered = DENEY {0:00}
+experiments_level_title = SEVİYE {0}  ·  {1}
+experiments_level_locked = Mühürlü — açmak için önce Seviye {0} tamamlanmalı
+experiments_level_info = {0} numune  ·  {1}×{2} kap
+experiments_level_info_cured = {0} numune  ·  {1}×{2} kap  ·  tedavi edildi
+experiments_milestone_cured = {0}  ·  {1} / {1} TEDAVİ EDİLDİ
+experiments_milestone_home = ANA SAYFA
+experiments_milestone_lab = LABORATUVAR
+experiments_milestone_samples = NUMUNELER
+
+# ---------------------------------------------------------------- laboratuvar
+lab_title = LABORATUVAR
+lab_upgrade = GELİŞTİR
+lab_level = LAB SEVİYESİ {0}
+lab_hint = İncelemek için bir cihaza dokun
+lab_goal_max = Laboratuvarın tamamen donanımlı
+lab_goal_analyzer = Sıradaki: Analizörü açmak için Mikroskobu geliştir
+lab_goal_level = Sıradaki: Lab Seviyesi {0} için Mikroskobu geliştir
+lab_equipment_level = Seviye {0}
+lab_max_level = Maksimum seviye
+lab_ready = Gelecek araştırmalara hazır
+lab_ready_caps = GELECEK ARAŞTIRMALARA HAZIR
+lab_microscope = MİKROSKOP
+lab_incubator = İNKÜBATÖR
+lab_analyzer = ANALİZÖR
+lab_incubator_locked = Deney 01'i tamamla
+lab_incubator_locked_body = Uyandırmak için Deney 01'i tamamla.
+lab_analyzer_locked = Gerekli: Lab Seviyesi {0}
+lab_analyzer_locked_body = Gerekli: Lab Seviyesi {0}. Mikroskobu geliştir.
+lab_microscope_max_body = Tamamen geliştirildi. Laboratuvarın için hassas bir cihaz.
+lab_microscope_body = Daha keskin mercekler laboratuvarını {0}. seviyeye çıkarır.
+lab_microscope_need = Araştırma kazanmak için daha fazla numune tedavi et. {0} kaldı.
+lab_cost = {0} Araştırma
+lab_unlocked = Açık
+lab_dormant = Uykuda
+lab_locked = Kilitli
+lab_upgrade_tag = GELİŞTİR  {0}
+
+# ---------------------------------------------------------------- güçlendiriciler (henüz oyunda yok)
+boosters_title = Güçlendiriciler
+booster_hint = Mikroskop İpucu
+booster_auto_cure = Otomatik Tedavi
+
+# ---------------------------------------------------------------- ayarlar
+settings_title = Ayarlar
+settings_music = Müzik
+settings_sfx = Ses Efektleri
+settings_haptics = Titreşim
+settings_language = Dil
+settings_coming_soon = Müzik, ses ve titreşim seçenekleri yakında geliyor.
+
+# ---------------------------------------------------------------- günlük / mağaza (yer tutucu)
+daily_title = Günlük Ödül
+daily_coming_soon = Her gün gel, ücretsiz Araştırma kazan.\nYakında açılıyor!
+shop_title = Laboratuvar Malzeme Dükkânı
+shop_coming_soon = Kozmetikler ve laboratuvar malzemeleri yolda.\nYakında açılıyor!
+
+# ---------------------------------------------------------------- içerik: Deney 01
+chapter_title_experiment_01 = Deney 01
+chapter_subtitle_experiment_01 = Virüs Numuneleri
+chapter_complete_title_experiment_01 = DENEY TAMAMLANDI
+chapter_complete_message_experiment_01 = On numunenin tümü kontrol altında. İlk aşı partisi teste hazır.
+level_title_lvl_01 = İlk Numune
+level_title_lvl_02 = Küçük Bir Dönüş
+level_title_lvl_03 = Kültür Karışımı
+level_title_lvl_04 = Petri Kabı
+level_title_lvl_05 = Dolu Kap
+level_title_lvl_06 = Kapsül
+level_title_lvl_07 = Halka Kültürü
+level_title_lvl_08 = Dikenli Suş
+level_title_lvl_09 = Kalp Dokusu
+level_title_lvl_10 = Şişe
+level_hint_lvl_01 = Her numuneyi kaba sürükle
+level_hint_lvl_02 = Döndürmek için numuneye dokun

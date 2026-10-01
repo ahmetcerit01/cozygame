@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using CozyLab.Puzzle.Core;
 using CozyLab.Puzzle.Data;
 using CozyLab.Puzzle.Interaction;
@@ -8,18 +10,20 @@ using UnityEngine.UI;
 namespace CozyLab.Puzzle.Presentation
 {
     /// <summary>
-    /// Visual for one piece: a soft, jelly-like blob built from rounded cells and bridges.
-    /// Hierarchy: root (position + base scale) → Lift (press/lift scale) → Visual (rotation + wobble).
+    /// Visual for one piece: a continuous shaded jelly surface with soft contact shadows.
+    /// Root (hit area/position) → Lift → Breath → Sway → Visual keeps motion separate from input.
     /// </summary>
     public sealed class PieceView : MonoBehaviour
     {
         private const float DragFollowSharpness = 28f;
-        private const float LiftedScale = 1.07f;
-        private const float MaxTiltDegrees = 7f;
+        private const float LiftedScale = 1.09f;
+        private const float MaxTiltDegrees = 9.5f;
         private const float InvalidAlpha = 0.72f;
 
         private RectTransform _root;
         private RectTransform _lift;
+        private RectTransform _breath;
+        private RectTransform _sway;
         private RectTransform _visual;
         private RectTransform _shadowLayer;
         private CanvasGroup _shadowGroup;
@@ -35,6 +39,8 @@ namespace CozyLab.Puzzle.Presentation
         private Vector3 _dragTarget;
         private Vector3 _lastPosition;
         private float _tilt;
+        private float _heldMotion;
+        private readonly Dictionary<string, JellySprite> _materials = new Dictionary<string, JellySprite>();
         private float _targetAlpha = 1f;
 
         private Coroutine _moveRoutine;
@@ -53,7 +59,9 @@ namespace CozyLab.Puzzle.Presentation
         {
             PieceId = pieceId;
             _pitch = pitch;
-            _color = color;
+            // Keep palette identity, but restore pigment lost to pastel/white overlays.
+            Color.RGBToHSV(color, out float hue, out float saturation, out float value);
+            _color = Color.HSVToRGB(hue, Mathf.Clamp01(saturation * 1.28f + 0.045f), value * 0.98f);
             _theme = theme;
 
             _root = (RectTransform)transform;
@@ -67,7 +75,11 @@ namespace CozyLab.Puzzle.Presentation
             _hitArea.offsetMax = new Vector2(pitch * 0.15f, pitch * 0.15f);
 
             _lift = UIFactory.CreateCentered("Lift", _root, Vector2.zero);
-            _visual = UIFactory.CreateCentered("Visual", _lift, Vector2.zero);
+            // A dedicated layer for the ambient "idle breathing" scale, kept separate from _visual so it
+            // never fights with rotation/wobble/celebrate tweens, which all animate _visual directly.
+            _breath = UIFactory.CreateCentered("Breath", _lift, Vector2.zero);
+            _sway = UIFactory.CreateCentered("Sway", _breath, Vector2.zero);
+            _visual = UIFactory.CreateCentered("Visual", _sway, Vector2.zero);
 
             gameObject.AddComponent<PieceDragHandler>().Initialize(pieceId, listener);
 
@@ -83,6 +95,7 @@ namespace CozyLab.Puzzle.Presentation
 
             Tween.Stop(this, ref _fxRoutine);
             _visual.localScale = Vector3.one;
+            _visual.anchoredPosition = Vector2.zero;
 
             if (!animateRotation)
             {
@@ -161,8 +174,8 @@ namespace CozyLab.Puzzle.Presentation
                 if (dt > 0f && _root.parent != null)
                 {
                     var velocity = _root.parent.InverseTransformVector(_root.position - _lastPosition) / dt;
-                    float targetTilt = Mathf.Clamp(-velocity.x * 0.004f, -MaxTiltDegrees, MaxTiltDegrees);
-                    _tilt = Mathf.Lerp(_tilt, targetTilt, 1f - Mathf.Exp(-12f * dt));
+                    float targetTilt = Mathf.Clamp(-velocity.x * 0.0055f, -MaxTiltDegrees, MaxTiltDegrees);
+                    _tilt = Mathf.Lerp(_tilt, targetTilt, 1f - Mathf.Exp(-10f * dt));
                 }
                 _lastPosition = _root.position;
             }
@@ -174,7 +187,13 @@ namespace CozyLab.Puzzle.Presentation
             {
                 _tilt = 0f;
             }
-            _lift.localRotation = Quaternion.Euler(0f, 0f, _tilt);
+            _heldMotion = Mathf.Lerp(_heldMotion, _dragging ? 1f : 0f, 1f - Mathf.Exp(-12f * dt));
+            float phase = Time.unscaledTime * 5.2f + PieceId * 1.3f;
+            _lift.localRotation = Quaternion.Euler(0f, 0f, _tilt + Mathf.Sin(phase) * 1.2f * _heldMotion);
+            // Only child graphics deform; the hit area, grab offset and grid mapping stay exact.
+            float soft = (0.012f * Mathf.Sin(phase) + Mathf.Abs(_tilt) * 0.0015f) * _heldMotion;
+            _sway.localScale = new Vector3(1f + soft, 1f - soft, 1f);
+            _sway.anchoredPosition = new Vector2(0f, Mathf.Sin(phase * 0.8f) * _pitch * 0.009f * _heldMotion);
 
             if (_group != null && !Mathf.Approximately(_group.alpha, _targetAlpha))
                 _group.alpha = Mathf.MoveTowards(_group.alpha, _targetAlpha, dt * 4f);
@@ -235,15 +254,23 @@ namespace CozyLab.Puzzle.Presentation
         }
 
         /// <summary>Squash-and-stretch impact, used when a piece lands in the grid.</summary>
-        public void PlayWobble(float strength = 0.11f, float duration = 0.4f, float delay = 0f)
+        public void PlayWobble(float strength = 0.085f, float duration = 0.52f, float delay = 0f)
         {
             Tween.Stop(this, ref _fxRoutine);
             _visual.localRotation = Quaternion.identity;
             _fxRoutine = Tween.Run(this, duration, Ease.Linear, t =>
             {
-                float w = Ease.Wobble(t) * strength;
-                _visual.localScale = new Vector3(1f + w, 1f - w * 0.8f, 1f);
-            }, () => _visual.localScale = Vector3.one, delay);
+                float envelope = Mathf.Exp(-4f * t) * (1f - t);
+                float w = Mathf.Sin(t * Mathf.PI * 3f) * strength * envelope;
+                _visual.localScale = new Vector3(1f + w, 1f - w, 1f);
+                _visual.anchoredPosition = new Vector2(0f, -Mathf.Sin(t * Mathf.PI) * _pitch * 0.025f * envelope);
+                _visual.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(t * Mathf.PI * 4f) * envelope * 1.1f);
+            }, () =>
+            {
+                _visual.localScale = Vector3.one;
+                _visual.anchoredPosition = Vector2.zero;
+                _visual.localRotation = Quaternion.identity;
+            }, delay);
         }
 
         /// <summary>Small side-to-side shake: "can't do that".</summary>
@@ -251,6 +278,7 @@ namespace CozyLab.Puzzle.Presentation
         {
             Tween.Stop(this, ref _fxRoutine);
             _visual.localScale = Vector3.one;
+            _visual.anchoredPosition = Vector2.zero;
             _fxRoutine = Tween.Run(this, 0.3f, Ease.Linear, t =>
             {
                 _visual.localRotation = Quaternion.Euler(0f, 0f, Ease.Wobble(t) * 6f);
@@ -285,6 +313,14 @@ namespace CozyLab.Puzzle.Presentation
             }, delay);
         }
 
+        /// <summary>Ambient idle scale (e.g. the ~1-2% "breathing" on placed samples). Never touches hitboxes
+        /// or grid coordinates — purely a visual scale on a leaf transform below the piece root.</summary>
+        public void SetBreath(float scale)
+        {
+            if (_breath == null) return;
+            _breath.localScale = new Vector3(scale, scale, 1f);
+        }
+
         public void ResetFeedback()
         {
             Tween.Stop(this, ref _fxRoutine);
@@ -293,8 +329,13 @@ namespace CozyLab.Puzzle.Presentation
             Tween.Stop(this, ref _shakeRoutine);
             _visual.localScale = Vector3.one;
             _visual.localRotation = Quaternion.identity;
+            if (_breath != null) _breath.localScale = Vector3.one;
             _lift.anchoredPosition = Vector2.zero;
             _tilt = 0f;
+            _heldMotion = 0f;
+            _sway.localScale = Vector3.one;
+            _sway.anchoredPosition = Vector2.zero;
+            _visual.anchoredPosition = Vector2.zero;
             SetUniform(_lift, 1f);
             SetInvalidHint(false);
             SetLifted(false);
@@ -333,77 +374,40 @@ namespace CozyLab.Puzzle.Presentation
         private void BuildGraphics()
         {
             UIFactory.DestroyChildren(_visual);
-
-            float body = _pitch * _theme.pieceBodyScale;
-            float radius = body * _theme.pieceCornerRadius;
-            float depth = _theme.pieceDepth * _pitch;
-            float bridgeThickness = body * 0.62f;
-
-            var under = Color.Lerp(_color, new Color(0.15f, 0.18f, 0.25f), 0.28f);
-            var core = Color.Lerp(_color, Color.white, 0.2f);
-            var dot = Color.Lerp(_color, new Color(0.2f, 0.22f, 0.32f), 0.35f);
-            dot.a = 0.55f;
-            var shadowColor = new Color(0.10f, 0.16f, 0.22f, _theme.pieceShadowAlpha);
-
+            var key = new StringBuilder();
+            foreach (var cell in _shape.Cells) key.Append(cell.x).Append(',').Append(cell.y).Append(';');
+            if (!_materials.TryGetValue(key.ToString(), out var material))
+            {
+                material = JellySprite.Create(_shape, _color,
+                    Mathf.Min(0.94f, _theme.pieceBodyScale + 0.04f), Mathf.Min(0.44f, _theme.pieceCornerRadius + 0.03f));
+                _materials.Add(key.ToString(), material);
+            }
+            var size = material.SizeInCells * _pitch;
             _shadowLayer = UIFactory.CreateCentered("Shadows", _visual, Vector2.zero);
             _shadowGroup = _shadowLayer.gameObject.AddComponent<CanvasGroup>();
             _shadowGroup.blocksRaycasts = false;
             _shadowGroup.interactable = false;
-            var underLayer = UIFactory.CreateCentered("Underside", _visual, Vector2.zero);
-            var bodyLayer = UIFactory.CreateCentered("Body", _visual, Vector2.zero);
-            var detailLayer = UIFactory.CreateCentered("Details", _visual, Vector2.zero);
+            UIFactory.CreateSpriteImage("ContactShadow", _shadowLayer, material.Shadow, size,
+                new Color(0.24f, 0.18f, 0.09f, 0.24f), new Vector2(_pitch * 0.012f, -_pitch * 0.045f));
+            UIFactory.CreateSpriteImage("Jelly", _visual, material.Body, size, Color.white);
 
-            var shadowOffset = new Vector2(0f, -depth - _pitch * 0.05f);
-            var underOffset = new Vector2(0f, -depth);
-            float shadowBlur = _pitch * 0.12f;
-
+            // Tiny trapped-air details, sparse and transparent so the pigment stays rich.
             foreach (var cell in _shape.Cells)
             {
                 var center = CellLocal(cell);
-
-                UIFactory.CreateShadow("Shadow", _shadowLayer, new Vector2(body, body), shadowBlur, shadowColor,
-                    center + shadowOffset);
-                UIFactory.CreateRoundedImage("Under", underLayer, new Vector2(body, body), radius, under, center + underOffset);
-                UIFactory.CreateRoundedImage("Cell", bodyLayer, new Vector2(body, body), radius, _color, center);
-
-                // Bridges to right / down neighbours make the cells read as one soft blob.
-                foreach (var dir in new[] { Vector2Int.right, new Vector2Int(0, 1) })
-                {
-                    if (!_shape.Contains(cell + dir)) continue;
-                    var mid = (center + CellLocal(cell + dir)) * 0.5f;
-                    var size = dir.x != 0 ? new Vector2(_pitch, bridgeThickness) : new Vector2(bridgeThickness, _pitch);
-                    UIFactory.CreateRoundedImage("UnderBridge", underLayer, size, bridgeThickness * 0.3f, under, mid + underOffset);
-                    UIFactory.CreateRoundedImage("Bridge", bodyLayer, size, bridgeThickness * 0.3f, _color, mid);
-                }
-
-                // Fill the hole in the middle of any 2x2 block.
-                var right = cell + Vector2Int.right;
-                var down = cell + new Vector2Int(0, 1);
-                var diag = cell + new Vector2Int(1, 1);
-                if (_shape.Contains(right) && _shape.Contains(down) && _shape.Contains(diag))
-                {
-                    var mid = (center + CellLocal(diag)) * 0.5f;
-                    UIFactory.CreateRoundedImage("Fill", bodyLayer, new Vector2(body, body) * 0.7f, radius * 0.5f, _color, mid);
-                }
-
-                // Gel-like lighter core, highlight and organelle dots.
-                UIFactory.CreateRoundedImage("Core", detailLayer, new Vector2(body, body) * 0.68f, radius * 0.7f, core,
-                    center + new Vector2(0f, body * 0.02f));
-                UIFactory.CreateSpriteImage("Highlight", detailLayer, ProceduralSprites.SoftGlow,
-                    new Vector2(body * 0.5f, body * 0.34f), new Color(1f, 1f, 1f, _theme.pieceHighlightAlpha),
-                    center + new Vector2(-body * 0.16f, body * 0.22f));
-
-                var rng = new System.Random(PieceId * 7919 + cell.x * 131 + cell.y * 17);
-                for (int i = 0; i < _theme.pieceDetailDots; i++)
-                {
-                    float d = body * (0.1f + (float)rng.NextDouble() * 0.07f);
-                    var p = new Vector2(((float)rng.NextDouble() - 0.5f) * body * 0.42f,
-                        ((float)rng.NextDouble() - 0.6f) * body * 0.36f);
-                    UIFactory.CreateSpriteImage("Dot", detailLayer, ProceduralSprites.Circle, new Vector2(d, d), dot, center + p);
-                }
+                if ((cell.x + cell.y + PieceId) % 2 != 0) continue;
+                float diameter = _pitch * 0.065f;
+                UIFactory.CreateSpriteImage("AirBubble", _visual, ProceduralSprites.Ring,
+                    Vector2.one * diameter, new Color(1f, 0.97f, 0.85f, 0.3f),
+                    center + new Vector2(_pitch * 0.13f, -_pitch * 0.12f));
             }
         }
 
+        private void OnDestroy()
+        {
+            foreach (var material in _materials.Values) material.Dispose();
+            _materials.Clear();
+        }
         private Vector2 CellLocal(Vector2Int cell)
         {
             float x = (cell.x - (_shape.Width - 1) * 0.5f) * _pitch;

@@ -32,6 +32,8 @@ namespace CozyLab.Puzzle.Tests
         {
             _savePath = Path.Combine(Path.GetTempPath(), "cozylab_playmode_" + System.Guid.NewGuid().ToString("N") + ".json");
             GameFlow.StoreOverride = new JsonFileProgressStore(_savePath);
+            // These flows assert English copy; the device language (e.g. Turkish) must not leak in.
+            Localization.Loc.Initialize(new Localization.MemoryLanguageStore("en"), SystemLanguage.English);
         }
 
         [TearDown]
@@ -50,11 +52,9 @@ namespace CozyLab.Puzzle.Tests
             yield return LoadGame();
             var flow = GameFlow.Active;
 
-            // Launch lands on Home; reach the existing Level Select through Experiments.
+            // Launch lands on Home; the Experiments tile opens the sample rack (Level Select).
             Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
-            ClickObject("ExperimentsObject");
-            yield return null;
-            Click(FindButton("OpenExperimentButton"));
+            Click(FindButton("ExperimentsButton"));
             yield return null;
 
             // Fresh progress: only Level 1 is open, locked levels are rejected.

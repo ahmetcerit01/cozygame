@@ -28,8 +28,14 @@ namespace CozyLab.Puzzle.Presentation
         public float CellSize { get; private set; }
         public RectTransform PieceLayer => _pieceLayer;
         public RectTransform GridRoot => _gridRoot;
+        public PuzzleGrid Grid => _grid;
 
-        public void Build(PuzzleGrid grid, PuzzleTheme theme, float boardSize, float gridPadding)
+        /// <summary>Ambience hooks for <see cref="Environment.AmbientSceneAnimator"/>; null on a rectangular
+        /// (non-glass) tray, since only the circular dish has a glass highlight to sweep.</summary>
+        public RectTransform GlassShine { get; private set; }
+        public RectTransform GlassGlint { get; private set; }
+
+        public void Build(PuzzleGrid grid, PuzzleTheme theme, float boardSize, float gridPadding, bool drawShell = true)
         {
             _grid = grid;
             _theme = theme;
@@ -37,25 +43,23 @@ namespace CozyLab.Puzzle.Presentation
             var root = (RectTransform)transform;
             root.sizeDelta = new Vector2(boardSize, boardSize);
 
+            bool circular = theme.boardShape == PuzzleTheme.BoardShape.Circle;
+
             float gridSpan = boardSize - gridPadding * 2f;
-            Pitch = gridSpan / Mathf.Max(grid.Width, grid.Height);
+            // A circular dish must clear the grid's diagonal, not just its longest side, or corner
+            // cells would poke past the rim; a rectangular tray only needs the longest side to fit.
+            float footprint = circular
+                ? Mathf.Sqrt(grid.Width * grid.Width + grid.Height * grid.Height)
+                : Mathf.Max(grid.Width, grid.Height);
+            Pitch = gridSpan / footprint;
             CellSize = Pitch * 0.9f;
 
-            float outerRadius = boardSize * 0.14f;
             float rim = boardSize * 0.035f;
-
-            // Tray: shadow, glass rim, inner body.
-            var shadow = UIFactory.CreateShadow("Shadow", root, new Vector2(boardSize, boardSize), 48f, theme.boardShadowColor,
-                new Vector2(0f, -22f));
-            shadow.transform.SetAsFirstSibling();
-            UIFactory.CreateRoundedImage("Rim", root, new Vector2(boardSize, boardSize), outerRadius, theme.boardRimColor);
-            UIFactory.CreateRoundedImage("Body", root, new Vector2(boardSize - rim * 2f, boardSize - rim * 2f),
-                outerRadius - rim, theme.boardColor);
-
-            // Subtle glass highlight along the top of the rim.
-            var shine = UIFactory.CreateRoundedImage("Shine", root, new Vector2(boardSize * 0.55f, rim * 0.55f), rim * 0.3f,
-                new Color(1f, 1f, 1f, 0.55f), new Vector2(-boardSize * 0.12f, boardSize * 0.5f - rim * 0.5f));
-            shine.raycastTarget = false;
+            if (drawShell)
+            {
+                if (circular) BuildCircularDish(root, theme, boardSize, rim);
+                else BuildRectangularDish(root, theme, boardSize, rim);
+            }
 
             _gridRoot = UIFactory.CreateCentered("Grid", root,
                 new Vector2(grid.Width * Pitch, grid.Height * Pitch));
@@ -76,12 +80,8 @@ namespace CozyLab.Puzzle.Presentation
                 var center = CellCenterLocal(cell);
                 int index = Index(cell);
 
-                // A recessed well: dark rim with the lighter floor shifted down a touch.
-                UIFactory.CreateRoundedImage($"WellShadow_{cell.x}_{cell.y}", wells, new Vector2(CellSize, CellSize),
-                    wellRadius, theme.wellInnerShadowColor, center);
-                UIFactory.CreateRoundedImage($"Well_{cell.x}_{cell.y}", wells,
-                    new Vector2(CellSize - 6f, CellSize - 10f), wellRadius * 0.95f, theme.wellColor,
-                    center + new Vector2(0f, -4f));
+                // A recessed culture slot: dark rim, lighter floor shifted down a touch, faint top sheen.
+                WellVisual.Draw($"Well_{cell.x}_{cell.y}", wells, center, CellSize, theme);
 
                 var flash = UIFactory.CreateRoundedImage($"Flash_{cell.x}_{cell.y}", flashLayer,
                     new Vector2(CellSize * 1.08f, CellSize * 1.08f), wellRadius * 1.1f, Color.clear, center);
@@ -94,6 +94,72 @@ namespace CozyLab.Puzzle.Presentation
                 preview.enabled = false;
                 _previewCells[index] = preview;
             }
+        }
+
+        /// <summary>Square tray with rounded corners (the original presentation).</summary>
+        private static void BuildRectangularDish(RectTransform root, PuzzleTheme theme, float boardSize, float rim)
+        {
+            float outerRadius = boardSize * 0.14f;
+
+            var shadow = UIFactory.CreateShadow("Shadow", root, new Vector2(boardSize, boardSize), 48f, theme.boardShadowColor,
+                new Vector2(0f, -22f));
+            shadow.transform.SetAsFirstSibling();
+            UIFactory.CreateRoundedImage("Rim", root, new Vector2(boardSize, boardSize), outerRadius, theme.boardRimColor);
+            UIFactory.CreateRoundedImage("Body", root, new Vector2(boardSize - rim * 2f, boardSize - rim * 2f),
+                outerRadius - rim, theme.boardColor);
+
+            // Subtle glass highlight along the top of the rim.
+            var shine = UIFactory.CreateRoundedImage("Shine", root, new Vector2(boardSize * 0.55f, rim * 0.55f), rim * 0.3f,
+                new Color(1f, 1f, 1f, 0.55f), new Vector2(-boardSize * 0.12f, boardSize * 0.5f - rim * 0.5f));
+            shine.raycastTarget = false;
+        }
+
+        /// <summary>
+        /// Round petri-dish tray, layered to read as translucent glass rather than a flat circle: cast
+        /// shadow, glass wall (rim), floor (body), an inner wall shadow where the curved glass would meet
+        /// the floor, a bright rim catching the light, and two highlight streaks (one soft, one a tighter
+        /// glint). Purely presentational — the grid/mask contents underneath are identical to the rectangular
+        /// build; a later art pass can swap these procedural layers for real glass/material assets without
+        /// touching layout or gameplay.
+        /// </summary>
+        private void BuildCircularDish(RectTransform root, PuzzleTheme theme, float boardSize, float rim)
+        {
+            var shadow = UIFactory.CreateCircleShadow("Shadow", root, new Vector2(boardSize, boardSize), 48f,
+                theme.boardShadowColor, new Vector2(0f, -22f));
+            shadow.transform.SetAsFirstSibling();
+
+            // A rounded-rect whose corner radius equals half its size degenerates into a perfect circle.
+            UIFactory.CreateRoundedImage("Rim", root, new Vector2(boardSize, boardSize), boardSize * 0.5f, theme.boardRimColor);
+            float bodySize = boardSize - rim * 2f;
+            UIFactory.CreateRoundedImage("Body", root, new Vector2(bodySize, bodySize), bodySize * 0.5f, theme.boardColor);
+
+            // Inner wall shadow: a soft ring just inside the floor's edge, where a real dish's curved glass
+            // wall would catch a shadow before flattening out — gives the floor a shallow, concave read.
+            var wallShadowTint = Color.Lerp(theme.boardColor, theme.wellInnerShadowColor, 0.55f);
+            var innerWallShadow = UIFactory.CreateSpriteImage("InnerWallShadow", root, ProceduralSprites.Ring,
+                new Vector2(bodySize * 0.95f, bodySize * 0.95f),
+                new Color(wallShadowTint.r, wallShadowTint.g, wallShadowTint.b, 0.35f));
+            innerWallShadow.raycastTarget = false;
+
+            // Glass rim catching the light.
+            var glassRim = UIFactory.CreateSpriteImage("GlassRim", root, ProceduralSprites.Ring,
+                new Vector2(bodySize, bodySize), new Color(1f, 1f, 1f, 0.28f));
+            glassRim.raycastTarget = false;
+
+            // Broad soft sheen, like a lit dish lid seen at an angle...
+            var shine = UIFactory.CreateSpriteImage("Shine", root, ProceduralSprites.SoftGlow,
+                new Vector2(boardSize * 0.5f, boardSize * 0.22f), new Color(1f, 1f, 1f, 0.32f),
+                new Vector2(-boardSize * 0.16f, boardSize * 0.22f));
+            shine.raycastTarget = false;
+            shine.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -18f);
+            GlassShine = shine.rectTransform;
+
+            // ...plus a small, tighter glint for an actual glass-reflection highlight.
+            var glint = UIFactory.CreateSpriteImage("Glint", root, ProceduralSprites.SoftGlow,
+                new Vector2(boardSize * 0.15f, boardSize * 0.15f), new Color(1f, 1f, 1f, 0.5f),
+                new Vector2(-boardSize * 0.24f, boardSize * 0.32f));
+            glint.raycastTarget = false;
+            GlassGlint = glint.rectTransform;
         }
 
         /// <summary>Centre of a cell in the grid root's local space.</summary>
@@ -177,7 +243,7 @@ namespace CozyLab.Puzzle.Presentation
             {
                 var cell = origin + c;
                 if (!_grid.IsRequired(cell)) continue;
-                FlashCell(cell, color, 0.55f, 0f, 0.42f);
+                FlashCell(cell, color, 0.22f, 0f, 0.52f);
             }
         }
 

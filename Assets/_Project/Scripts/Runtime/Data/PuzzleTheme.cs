@@ -10,6 +10,13 @@ namespace CozyLab.Puzzle.Data
     [CreateAssetMenu(menuName = "CozyLab/Puzzle/Theme", fileName = "Theme_New")]
     public sealed class PuzzleTheme : ScriptableObject
     {
+        /// <summary>Outer silhouette of the board presentation. The grid/mask underneath is unaffected either way.</summary>
+        public enum BoardShape
+        {
+            Rectangle,
+            Circle,
+        }
+
         [Header("Wording")]
         public string themeName = "Virus Samples";
         public string instructionText = "Fit every sample into the culture tray";
@@ -26,6 +33,8 @@ namespace CozyLab.Puzzle.Data
         public Color textSecondaryColor = new Color(0.447f, 0.522f, 0.580f);
 
         [Header("Board")]
+        [Tooltip("Presentation-only silhouette for the board tray. 'Circle' draws a petri-dish disc; the grid/mask inside is identical either way.")]
+        public BoardShape boardShape = BoardShape.Circle;
         public Color boardShadowColor = new Color(0.180f, 0.290f, 0.310f, 0.22f);
         public Color boardRimColor = new Color(0.792f, 0.886f, 0.886f);
         public Color boardColor = new Color(0.976f, 0.988f, 0.988f);
@@ -73,6 +82,17 @@ namespace CozyLab.Puzzle.Data
         public Color metalColor = new Color(0.639f, 0.702f, 0.749f);
         public Color metalDarkColor = new Color(0.357f, 0.420f, 0.494f);
         public Color warmLightColor = new Color(1f, 0.859f, 0.600f);
+
+        [Header("Gameplay Environment (desk, props, ambience)")]
+        [Tooltip("Base tone of the gameplay desk background, behind the dish/tray.")]
+        public Color deskWoodColor = new Color(0.827f, 0.698f, 0.557f);
+        [Tooltip("Lighter tone blended at the top of the desk, like light falling from above.")]
+        public Color deskWoodLightColor = new Color(0.929f, 0.824f, 0.667f);
+        [Tooltip("Plant pot placeholder tone.")]
+        public Color potColor = new Color(0.780f, 0.463f, 0.353f);
+        [Tooltip("Plant leaf placeholder tones (two, for a touch of natural variation).")]
+        public Color leafColor = new Color(0.420f, 0.620f, 0.404f);
+        public Color leafColorAlt = new Color(0.529f, 0.698f, 0.443f);
 
         [Header("Combos")]
         public string comboGoodLabel = "GOOD!";

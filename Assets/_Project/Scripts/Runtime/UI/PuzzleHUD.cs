@@ -1,5 +1,6 @@
 using System;
 using CozyLab.Puzzle.Data;
+using CozyLab.Puzzle.Localization;
 using CozyLab.Puzzle.Presentation;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,9 +10,9 @@ namespace CozyLab.Puzzle.UI
     /// <summary>What the HUD shows for the current level. Filled by the screen, not by gameplay.</summary>
     public struct PuzzleHudInfo
     {
-        public string LevelLabel;     // e.g. "LEVEL 4"
-        public string Subtitle;       // level name or tutorial hint
-        public string ContinueLabel;  // success primary button, e.g. "NEXT LEVEL" / "FINISH"
+        public int LevelNumber;       // shown as "LEVEL 4"
+        public LocString Subtitle;    // level name or tutorial hint
+        public bool IsLastLevel;      // success button: FINISH instead of NEXT LEVEL
     }
 
     /// <summary>Back button, title, progress, Undo / Restart buttons and the success overlay.</summary>
@@ -20,9 +21,12 @@ namespace CozyLab.Puzzle.UI
         private Text _progress;
         private Button _undoButton;
         private CanvasGroup _undoGroup;
+        private RectTransform _undoBadge;
+        private Text _undoBadgeText;
         private Button _restartButton;
         private Button _backButton;
         private bool _undoAvailable;
+        private int _undoCount;
         private bool _inputLocked;
         private RectTransform _overlay;
         private CanvasGroup _overlayGroup;
@@ -42,18 +46,21 @@ namespace CozyLab.Puzzle.UI
             PuzzleHudInfo info)
         {
             // --- Top bar: back, level label, subtitle, progress.
-            _backButton = UIButtons.CreatePill("BackButton", topBar, "LEVELS", new Vector2(200f, 96f), Vector2.zero,
+            _backButton = UIButtons.CreatePill("BackButton", topBar, string.Empty, new Vector2(200f, 96f), Vector2.zero,
                 theme.buttonColor, theme.buttonTextColor, 32);
             var backRt = (RectTransform)_backButton.transform;
             backRt.anchorMin = backRt.anchorMax = new Vector2(0f, 1f);
             backRt.anchoredPosition = new Vector2(40f + 100f, -68f);
             _backButton.onClick.AddListener(() => BackClicked?.Invoke());
+            UIButtons.SetLabelKey(_backButton, "gameplay_levels");
 
-            var title = UIFactory.CreateText("Title", topBar, info.LevelLabel, 60, theme.textPrimaryColor,
+            var title = UIFactory.CreateText("Title", topBar, string.Empty, 60, theme.textPrimaryColor,
                 TextAnchor.MiddleCenter, FontStyle.Bold);
             SetBand(title.rectTransform, 1f, 0.58f, 250f);
+            title.Localize("gameplay_level", info.LevelNumber);
 
-            var subtitle = UIFactory.CreateText("Subtitle", topBar, info.Subtitle, 36, theme.textSecondaryColor);
+            var subtitle = UIFactory.CreateText("Subtitle", topBar, string.Empty, 36, theme.textSecondaryColor);
+            subtitle.Localize(info.Subtitle);
             SetBand(subtitle.rectTransform, 0.58f, 0.3f, 60f);
 
             _progress = UIFactory.CreateText("Progress", topBar, string.Empty, 30, theme.accentColor, TextAnchor.MiddleCenter,
@@ -61,26 +68,32 @@ namespace CozyLab.Puzzle.UI
             SetBand(_progress.rectTransform, 0.3f, 0.06f, 60f);
 
             // --- Bottom bar: Undo + Restart.
-            _undoButton = UIButtons.CreatePill("UndoButton", bottomBar, theme.undoLabel, new Vector2(400f, 132f),
+            _undoButton = UIButtons.CreatePill("UndoButton", bottomBar, string.Empty, new Vector2(400f, 132f),
                 new Vector2(-220f, 0f), theme.buttonColor, theme.buttonTextColor);
             _undoButton.onClick.AddListener(() => UndoClicked?.Invoke());
+            UIButtons.SetLabelKey(_undoButton, "gameplay_undo");
             _undoGroup = _undoButton.gameObject.AddComponent<CanvasGroup>();
+            BuildUndoBadge(theme);
 
-            _restartButton = UIButtons.CreatePill("RestartButton", bottomBar, theme.restartLabel, new Vector2(400f, 132f),
+            _restartButton = UIButtons.CreatePill("RestartButton", bottomBar, string.Empty, new Vector2(400f, 132f),
                 new Vector2(220f, 0f), theme.buttonColor, theme.buttonTextColor);
             _restartButton.onClick.AddListener(() => RestartClicked?.Invoke());
+            UIButtons.SetLabelKey(_restartButton, "gameplay_restart");
 
             BuildOverlay(overlayParent, theme, info);
         }
 
         public void SetProgress(int placed, int total)
         {
-            _progress.text = $"{placed} / {total} placed";
+            _progress.Localize("gameplay_placed", placed, total);
         }
 
-        public void SetUndoInteractable(bool interactable)
+        /// <summary><paramref name="undoCount"/> only drives the small badge; it's not a limited resource
+        /// (Undo remains gated purely by <paramref name="interactable"/>, i.e. whether there's history to undo).</summary>
+        public void SetUndoState(bool interactable, int undoCount)
         {
             _undoAvailable = interactable;
+            _undoCount = Mathf.Max(0, undoCount);
             RefreshButtons();
         }
 
@@ -125,15 +138,15 @@ namespace CozyLab.Puzzle.UI
 
         private void ShowReward(int amount, float delay)
         {
-            _rewardText.text = "+0 RESEARCH";
+            _rewardText.SetLiteral(Loc.Format("level_complete_research", 0));
             _reward.localScale = Vector3.zero;
             Tween.Run(this, 0.6f, Ease.Linear, t =>
             {
                 _reward.gameObject.SetActive(true);
                 float s = Mathf.LerpUnclamped(0f, 1f, Ease.OutBack(Mathf.Clamp01(t * 1.8f)));
                 _reward.localScale = new Vector3(s, s, 1f);
-                _rewardText.text = $"+{Mathf.RoundToInt(amount * Ease.OutCubic(t))} RESEARCH";
-            }, () => _rewardText.text = $"+{amount} RESEARCH", delay);
+                _rewardText.SetLiteral(Loc.Format("level_complete_research", Mathf.RoundToInt(amount * Ease.OutCubic(t))));
+            }, () => _rewardText.Localize("level_complete_research", amount), delay);
         }
 
         public void HideSuccess()
@@ -151,6 +164,23 @@ namespace CozyLab.Puzzle.UI
             _undoGroup.alpha = undo ? 1f : 0.45f;
             _restartButton.interactable = !_inputLocked;
             _backButton.interactable = !_inputLocked;
+
+            bool showBadge = _undoCount > 0;
+            _undoBadge.gameObject.SetActive(showBadge);
+            if (showBadge) _undoBadgeText.text = _undoCount.ToString();
+        }
+
+        private void BuildUndoBadge(PuzzleTheme theme)
+        {
+            _undoBadge = UIFactory.CreateCentered("UndoBadge", _undoButton.transform, new Vector2(56f, 56f),
+                new Vector2(172f, 50f));
+            UIFactory.CreateShadow("Shadow", _undoBadge, new Vector2(56f, 56f), 10f,
+                new Color(0.1f, 0.18f, 0.22f, 0.16f), new Vector2(0f, -4f));
+            UIFactory.CreateRoundedImage("Body", _undoBadge, new Vector2(56f, 56f), 28f, theme.accentColor);
+            _undoBadgeText = UIFactory.CreateText("Count", _undoBadge, "0", 30, Color.white, TextAnchor.MiddleCenter,
+                FontStyle.Bold);
+            UIFactory.Stretch(_undoBadgeText.rectTransform);
+            _undoBadge.gameObject.SetActive(false);
         }
 
         private void BuildOverlay(RectTransform parent, PuzzleTheme theme, PuzzleHudInfo info)
@@ -172,23 +202,28 @@ namespace CozyLab.Puzzle.UI
             UIFactory.CreateSpriteImage("Glow", _card, ProceduralSprites.SoftGlow, new Vector2(640f, 340f),
                 new Color(theme.accentColor.r, theme.accentColor.g, theme.accentColor.b, 0.35f), new Vector2(0f, 175f));
 
-            var title = UIFactory.CreateText("Title", _card, theme.successTitle, 100, theme.accentColor,
+            var title = UIFactory.CreateText("Title", _card, string.Empty, 100, theme.accentColor,
                 TextAnchor.MiddleCenter, FontStyle.Bold);
             PlaceCentered(title.rectTransform, new Vector2(800f, 150f), new Vector2(0f, 180f));
+            CureUI.FitLabel(title, 100);
+            title.Localize(new LocString("level_complete_title", theme.successTitle));
             var titleShadow = title.gameObject.AddComponent<Shadow>();
             titleShadow.effectColor = new Color(0f, 0f, 0f, 0.12f);
             titleShadow.effectDistance = new Vector2(0f, -5f);
 
-            var subtitle = UIFactory.CreateText("Subtitle", _card, theme.successSubtitle, 36, theme.textSecondaryColor);
+            var subtitle = UIFactory.CreateText("Subtitle", _card, string.Empty, 36, theme.textSecondaryColor);
+            subtitle.Localize(new LocString("level_complete_subtitle", theme.successSubtitle));
             PlaceCentered(subtitle.rectTransform, new Vector2(800f, 100f), new Vector2(0f, 65f));
 
-            var next = UIButtons.CreatePill("ContinueButton", _card, info.ContinueLabel, new Vector2(540f, 136f),
+            var next = UIButtons.CreatePill("ContinueButton", _card, string.Empty, new Vector2(540f, 136f),
                 new Vector2(0f, -95f), theme.accentColor, Color.white);
             next.onClick.AddListener(() => ContinueClicked?.Invoke());
+            UIButtons.SetLabelKey(next, info.IsLastLevel ? "level_complete_finish" : "level_complete_next");
 
-            var levels = UIButtons.CreatePill("LevelsButton", _card, "LEVELS", new Vector2(320f, 96f),
+            var levels = UIButtons.CreatePill("LevelsButton", _card, string.Empty, new Vector2(320f, 96f),
                 new Vector2(0f, -240f), theme.buttonColor, theme.buttonTextColor, 34, shadow: false);
             levels.onClick.AddListener(() => LevelsClicked?.Invoke());
+            UIButtons.SetLabelKey(levels, "gameplay_levels");
 
             // Research badge riding on the card's top edge (doesn't cover CURE FOUND!).
             _reward = UIFactory.CreateCentered("ResearchReward", _card, new Vector2(380f, 84f), new Vector2(0f, cardSize.y * 0.5f));

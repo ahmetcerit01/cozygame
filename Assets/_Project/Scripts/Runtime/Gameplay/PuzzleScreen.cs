@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using CozyLab.Puzzle.Data;
 using CozyLab.Puzzle.Feedback;
+using CozyLab.Puzzle.Localization;
 using CozyLab.Puzzle.Presentation;
+using CozyLab.Puzzle.Presentation.Environment;
 using CozyLab.Puzzle.UI;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace CozyLab.Puzzle.Gameplay
 {
@@ -26,6 +29,10 @@ namespace CozyLab.Puzzle.Gameplay
         [Tooltip("Optional. Sounds for pickup / rotate / place / invalid / completion. Empty clips are fine.")]
         [SerializeField] private PuzzleAudioSet audioSet;
         [SerializeField] private bool hapticsEnabled = true;
+
+        [Header("Authored gameplay presentation")]
+        [FormerlySerializedAs("level9CleanPlate")]
+        [SerializeField] private Sprite cleanPlate;
 
         [Header("Canvas")]
         [Tooltip("Conventional portrait reference. 'Expand' keeps this whole area visible on any aspect ratio.")]
@@ -109,7 +116,32 @@ namespace CozyLab.Puzzle.Gameplay
             _root.transform.SetParent(transform, false);
 
             var canvasRoot = ScreenCanvas.Create("PuzzleCanvas", _root.transform, referenceResolution, sortingOrder: 0);
-            ScreenCanvas.AddBackground(canvasRoot, theme);
+
+            bool useCleanPlate = cleanPlate != null;
+            RectTransform plateComposition = null;
+            LightingOverlay lighting = null;
+            LabPropsLayer props = null;
+            if (useCleanPlate)
+            {
+                // Art and interactive layers share one transform; safe-area scaling must not
+                // move the live grid independently of the dish painted into the background.
+                plateComposition = UIFactory.CreateRect("CleanPlateComposition", canvasRoot);
+                plateComposition.gameObject.AddComponent<FitToParentScaler>()
+                    .Configure(new Vector2(1080f, 1920f), float.MaxValue);
+                var plate = UIFactory.AddImage(UIFactory.CreateStretched("CleanPlate", plateComposition), Color.white);
+                plate.sprite = cleanPlate;
+                plate.preserveAspect = true;
+            }
+            else
+            {
+                // Retain a fallback for screens configured without authored art.
+                var desk = canvasRoot.gameObject.AddComponent<DeskBackground>();
+                desk.Build(canvasRoot, theme);
+                lighting = canvasRoot.gameObject.AddComponent<LightingOverlay>();
+                lighting.Build(canvasRoot, theme);
+                props = canvasRoot.gameObject.AddComponent<LabPropsLayer>();
+                props.Build(canvasRoot, theme);
+            }
 
             // --- Safe area with top bar / play area / bottom bar
             var safe = ScreenCanvas.AddSafeArea(canvasRoot);
@@ -132,19 +164,28 @@ namespace CozyLab.Puzzle.Gameplay
             playArea.offsetMin = new Vector2(0f, bottomBarHeight);
             playArea.offsetMax = new Vector2(0f, -topBarHeight);
 
-            var content = UIFactory.CreateRect("Content", playArea);
-            content.gameObject.AddComponent<FitToParentScaler>().Configure(playAreaDesignSize, 1f);
+            var content = useCleanPlate
+                ? UIFactory.CreateStretched("Content", plateComposition)
+                : UIFactory.CreateRect("Content", playArea);
+            if (!useCleanPlate)
+                content.gameObject.AddComponent<FitToParentScaler>().Configure(playAreaDesignSize, 1f);
 
             // --- Session + views
             var session = level.CreateSession();
 
-            var boardRt = UIFactory.CreateCentered("Board", content, Vector2.zero, new Vector2(0f, boardCenterY));
+            // Measured in the 1080 x 1920 composition: dish centre (540, 660) from top-left.
+            var boardRt = UIFactory.CreateCentered("Board", content, Vector2.zero,
+                useCleanPlate ? new Vector2(0f, 300f) : new Vector2(0f, boardCenterY));
             var board = boardRt.gameObject.AddComponent<BoardView>();
-            board.Build(session.Grid, theme, boardSize, boardGridPadding);
+            board.Build(session.Grid, theme, useCleanPlate ? 840f : boardSize,
+                useCleanPlate ? 44f : boardGridPadding, drawShell: !useCleanPlate);
 
-            var trayRt = UIFactory.CreateCentered("Tray", content, Vector2.zero, new Vector2(0f, trayCenterY));
+            // Keep all slot hit areas within the painted cream bed, clear of its raised rim.
+            var trayRt = UIFactory.CreateCentered("Tray", content, Vector2.zero,
+                useCleanPlate ? new Vector2(10f, -404f) : new Vector2(0f, trayCenterY));
             var tray = trayRt.gameObject.AddComponent<TrayView>();
-            tray.Build(session.Pieces, board.Pitch, traySize, theme, maxTrayPieceScale);
+            tray.Build(session.Pieces, board.Pitch, useCleanPlate ? new Vector2(824f, 492f) : traySize,
+                theme, useCleanPlate ? 0.66f : maxTrayPieceScale, drawShell: !useCleanPlate);
 
             // Effects sit above the board/tray but below the piece being dragged.
             var fxLayer = UIFactory.CreateStretched("Fx", content);
@@ -155,6 +196,9 @@ namespace CozyLab.Puzzle.Gameplay
 
             var dragLayer = UIFactory.CreateStretched("DragLayer", content);
 
+            // --- Environment layer 7: foreground decorative detail, above gameplay but below the HUD.
+            if (!useCleanPlate) ForegroundVignette.Build(canvasRoot, theme);
+
             var feedback = _root.AddComponent<PuzzleFeedback>();
             feedback.Initialize(audioSet);
             feedback.HapticsEnabled = hapticsEnabled;
@@ -164,9 +208,11 @@ namespace CozyLab.Puzzle.Gameplay
             Hud = canvasRoot.gameObject.AddComponent<PuzzleHUD>();
             Hud.Build(topBar, bottomBar, overlayRoot, theme, new PuzzleHudInfo
             {
-                LevelLabel = $"LEVEL {request.LevelNumber}",
-                Subtitle = string.IsNullOrEmpty(level.Hint) ? level.Title : level.Hint,
-                ContinueLabel = request.IsLastLevel ? "FINISH" : "NEXT LEVEL",
+                LevelNumber = request.LevelNumber,
+                Subtitle = string.IsNullOrEmpty(level.Hint)
+                    ? Loc.LevelTitle(level.LevelId, level.Title)
+                    : Loc.LevelHint(level.LevelId, level.Hint),
+                IsLastLevel = request.IsLastLevel,
             });
             Hud.ContinueClicked += () => ContinueRequested?.Invoke();
             Hud.LevelsClicked += () => LevelSelectRequested?.Invoke();
@@ -177,6 +223,18 @@ namespace CozyLab.Puzzle.Gameplay
 
             Controller = _root.AddComponent<PuzzleController>();
             Controller.Initialize(session, theme, colors, board, tray, dragLayer, Hud, particles, combo, feedback);
+
+            // --- Ambient motion: one centralized animator drives every decorative element (see hard rule:
+            // no independent Update() loops on decorative objects). Reuses the existing pooled particle
+            // system for the rare bubble/dust mote, so ambience never allocates per frame.
+            var ambient = canvasRoot.gameObject.AddComponent<AmbientSceneAnimator>();
+            ambient.Initialize(props != null && props.Plant != null ? props.Plant.Leaves : null,
+                lighting != null ? lighting.Sunlight : null,
+                lighting != null ? lighting.WindowShadow : null,
+                lighting != null ? lighting.LeafShadow : null,
+                board.GlassShine, board.GlassGlint, board, particles,
+                bubbleColor: new Color(theme.boardColor.r, theme.boardColor.g, theme.boardColor.b, 0.6f),
+                dustColor: new Color(theme.warmLightColor.r, theme.warmLightColor.g, theme.warmLightColor.b, 0.35f));
 
             session.Solved += () => Solved?.Invoke(level);
         }

@@ -25,6 +25,8 @@ namespace CozyLab.Puzzle.Tests
         {
             _savePath = Path.Combine(Path.GetTempPath(), "cozylab_homelab_" + System.Guid.NewGuid().ToString("N") + ".json");
             GameFlow.StoreOverride = new JsonFileProgressStore(_savePath);
+            // These flows assert English copy; the device language (e.g. Turkish) must not leak in.
+            Localization.Loc.Initialize(new Localization.MemoryLanguageStore("en"), SystemLanguage.English);
         }
 
         [TearDown]
@@ -53,8 +55,13 @@ namespace CozyLab.Puzzle.Tests
 
             Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
             Assert.AreEqual(HomeScreen.PrimaryAction.Begin, flow.Home.CurrentAction);
-            Assert.AreEqual("BEGIN EXPERIMENT", flow.Home.PrimaryLabel);
-            Assert.AreEqual(0, flow.Home.Dish.Cured);
+            Assert.AreEqual("BEGIN", flow.Home.PrimaryLabel);
+            Assert.AreEqual(0, flow.Home.Cured);
+            Assert.IsTrue(flow.Home.HasAuthoredBackground, "authored Home clean plate assigned");
+            Assert.AreEqual("CURRENT SAMPLE", flow.Home.ClipboardHeader);
+            Assert.AreEqual(flow.Catalog.GetLevel(0).Title, flow.Home.ClipboardTitle, "clipboard shows the next level");
+            Assert.AreEqual("Level 1", flow.Home.ClipboardLevel);
+            Assert.IsFalse(flow.NavBar.IsVisible, "Home uses its own tiles, not the tab bar");
             Assert.AreEqual(0, flow.Meta.Research);
 
             // BEGIN → Level 1 directly.
@@ -72,22 +79,24 @@ namespace CozyLab.Puzzle.Tests
             Assert.IsTrue(flow.PuzzleScreen.Hud.IsRewardVisible);
             Assert.AreEqual("+20 RESEARCH", flow.PuzzleScreen.Hud.RewardText);
 
-            // LEVELS → Level Select → BACK → Experiments → HOME.
+            // LEVELS → sample rack → ALL → Experiments journal → HOME tab.
             T.Click(T.FindButton("LevelsButton"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.LevelSelect, flow.CurrentScreen);
-            T.Click(T.FindButton("BackButton"));
+            Assert.IsTrue(flow.NavBar.IsVisible, "tab bar back on meta screens");
+            T.Click(T.FindButton("AllExperimentsButton"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Experiments, flow.CurrentScreen);
-            T.Click(T.FindButton("HomeButton"));
+            T.Click(T.FindButton("NavHome"));
             yield return null;
 
             Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
-            Assert.AreEqual(1, flow.Home.Dish.Cured, "one colony now cured");
+            Assert.AreEqual(1, flow.Home.Cured, "one colony now cured");
             Assert.IsTrue(flow.Home.IsToastVisible, "brief NEW SAMPLE CURED acknowledgement");
             Assert.AreEqual(HomeScreen.PrimaryAction.Continue, flow.Home.CurrentAction);
             Assert.AreEqual("CONTINUE", flow.Home.PrimaryLabel);
-            StringAssert.Contains("Level 2", flow.Home.SupportTitle);
+            Assert.AreEqual("Level 2", flow.Home.ClipboardLevel);
+            Assert.AreEqual(flow.Catalog.GetLevel(1).Title, flow.Home.ClipboardTitle);
 
             // Relaunch: progress and Research persist; no second acknowledgement.
             yield return T.LoadGame();
@@ -106,8 +115,8 @@ namespace CozyLab.Puzzle.Tests
             var flow = GameFlow.Active;
 
             Assert.AreEqual(100, flow.Meta.Research, "v1 save migrated: 5 × 20");
-            Assert.AreEqual(5, flow.Home.Dish.Cured);
-            StringAssert.Contains("Level 6", flow.Home.SupportTitle);
+            Assert.AreEqual(5, flow.Home.Cured);
+            Assert.AreEqual("Level 6", flow.Home.ClipboardLevel);
 
             T.Click(T.FindButton("PrimaryButton"));
             yield return null;
@@ -119,35 +128,69 @@ namespace CozyLab.Puzzle.Tests
         }
 
         [UnityTest]
-        public IEnumerator Experiments_OpenExistingLevelSelect_ThenPuzzle()
+        public IEnumerator Experiments_TileOpensSampleRack_JournalAndPuzzle()
         {
             yield return T.LoadGame();
             var flow = GameFlow.Active;
+            Assert.IsFalse(flow.NavBar.IsVisible, "no tab bar on Home");
 
-            T.ClickObject("ExperimentsObject");
+            T.Click(T.FindButton("ExperimentsButton"));
+            yield return null;
+            Assert.AreEqual(GameFlow.FlowScreen.LevelSelect, flow.CurrentScreen);
+            Assert.AreEqual(MetaTab.Experiments, flow.NavBar.Active);
+            Assert.AreEqual(10, flow.LevelSelect.Dishes.Count, "one sample per level");
+            Assert.AreEqual(LevelDishState.Available, flow.LevelSelect.Dishes[0].State);
+            Assert.AreEqual(LevelDishState.Locked, flow.LevelSelect.Dishes[1].State);
+            Assert.AreEqual("0 / 10 cured", flow.LevelSelect.ProgressText);
+
+            // ALL → the journal of experiments → Experiment 01 card → back to its rack.
+            T.Click(T.FindButton("AllExperimentsButton"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Experiments, flow.CurrentScreen);
             Assert.AreEqual("0 / 10 CURED", flow.Experiments.ProgressText);
-
-            T.ClickObject("Experiment01"); // tap the dish itself
+            T.ClickObject("Experiment01"); // tap the card itself
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.LevelSelect, flow.CurrentScreen);
-            Assert.AreEqual(10, flow.LevelSelect.Dishes.Count, "the existing 10-dish Level Select");
-            Assert.AreEqual(LevelDishState.Locked, flow.LevelSelect.Dishes[1].State);
 
             T.Click(T.FindButton("PlayButton"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Puzzle, flow.CurrentScreen);
+            Assert.IsFalse(flow.NavBar.IsVisible, "no tab bar during gameplay");
 
             T.Click(T.FindButton("BackButton")); // puzzle LEVELS pill
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.LevelSelect, flow.CurrentScreen);
-            T.Click(T.FindButton("BackButton")); // level select BACK
-            yield return null;
-            Assert.AreEqual(GameFlow.FlowScreen.Experiments, flow.CurrentScreen);
-            T.Click(T.FindButton("HomeButton"));
+            T.Click(T.FindButton("NavHome"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
+        }
+
+        [UnityTest]
+        public IEnumerator Home_ShopAndDaily_OpenPlaceholderDialog()
+        {
+            yield return T.LoadGame();
+            var flow = GameFlow.Active;
+
+            T.Click(T.FindButton("ShopButton"));
+            yield return null;
+            Assert.IsTrue(flow.Dialog.IsVisible);
+            T.Click(T.FindButton("DialogOkButton"));
+            yield return null;
+            Assert.IsFalse(flow.Dialog.IsVisible);
+
+            T.Click(T.FindButton("SettingsButton"));
+            yield return null;
+            Assert.AreEqual("Settings", flow.Dialog.Title);
+            T.Click(T.FindButton("DialogOkButton"));
+            yield return null;
+
+            T.Click(T.FindButton("DailyButton"));
+            yield return null;
+            Assert.IsTrue(flow.Dialog.IsVisible);
+            T.Click(T.FindButton("LabButton")); // navigating away closes it
+            yield return null;
+            Assert.IsFalse(flow.Dialog.IsVisible);
+            Assert.AreEqual(GameFlow.FlowScreen.Lab, flow.CurrentScreen);
         }
 
         [UnityTest]
@@ -157,10 +200,12 @@ namespace CozyLab.Puzzle.Tests
             yield return T.LoadGame();
             var flow = GameFlow.Active;
 
-            T.ClickObject("LabObject");
+            Assert.IsTrue(flow.Home.IsLabBadgeVisible, "120 Research affords an upgrade");
+            T.Click(T.FindButton("LabButton"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Lab, flow.CurrentScreen);
             Assert.AreEqual(120, flow.Lab.ShownResearch, "Research visible in the Lab");
+            Assert.IsTrue(flow.Lab.IsUpgradeTagVisible);
             Assert.AreEqual("Complete Experiment 01", flow.Lab.IncubatorStatus);
             StringAssert.Contains("Lab Level 3", flow.Lab.AnalyzerStatus);
 
@@ -182,7 +227,7 @@ namespace CozyLab.Puzzle.Tests
             Assert.AreEqual(6, flow.Progression.CompletedCount);
             Assert.IsFalse(flow.Progression.IsUnlocked(7));
 
-            T.Click(T.FindButton("HomeButton"));
+            T.Click(T.FindButton("NavHome"));
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
 
@@ -190,7 +235,7 @@ namespace CozyLab.Puzzle.Tests
             var reopened = GameFlow.Active;
             Assert.AreEqual(2, reopened.Meta.GetLevel(LabEquipment.Microscope), "upgrade persisted");
             Assert.AreEqual(20, reopened.Meta.Research, "balance persisted, migration not repeated");
-            T.ClickObject("LabObject");
+            T.Click(T.FindButton("LabButton"));
             yield return null;
             T.ClickObject("MicroscopeObject");
             yield return null;
@@ -229,8 +274,8 @@ namespace CozyLab.Puzzle.Tests
             yield return null;
             Assert.AreEqual(GameFlow.FlowScreen.Home, flow.CurrentScreen);
             Assert.AreEqual(HomeScreen.PrimaryAction.ViewResults, flow.Home.CurrentAction);
-            Assert.AreEqual(10, flow.Home.Dish.Cured);
-            Assert.AreEqual("EXPERIMENT COMPLETE", flow.Home.Dish.StatusText);
+            Assert.AreEqual(10, flow.Home.Cured);
+            Assert.AreEqual("EXPERIMENT COMPLETE", flow.Home.ClipboardHeader);
 
             // Replaying Level 10 grants nothing and shows no second finale.
             Assert.IsTrue(flow.TryOpenLevel(9));

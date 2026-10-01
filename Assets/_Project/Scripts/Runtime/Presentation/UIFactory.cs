@@ -82,6 +82,17 @@ namespace CozyLab.Puzzle.Presentation
             return image;
         }
 
+        /// <summary>Soft circular shadow behind a disc of <paramref name="casterSize"/> (width == height).</summary>
+        public static Image CreateCircleShadow(string name, Transform parent, Vector2 casterSize, float blur, Color color,
+            Vector2 anchoredPosition = default)
+        {
+            float pad = ProceduralSprites.ShadowPadding(blur) * 2f;
+            var rt = CreateCentered(name, parent, casterSize + new Vector2(pad, pad), anchoredPosition);
+            var image = AddImage(rt, color);
+            ProceduralSprites.ApplySoftCircleShadow(image);
+            return image;
+        }
+
         public static Image CreateSpriteImage(string name, Transform parent, Sprite sprite, Vector2 size, Color color,
             Vector2 anchoredPosition = default)
         {

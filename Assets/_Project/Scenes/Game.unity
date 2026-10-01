@@ -305,6 +305,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f6a1c2e8b7d4e5fa1b2c3d4e5f60104, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CozyLab.Puzzle::CozyLab.Puzzle.Gameplay.PuzzleScreen
+  cleanPlate: {fileID: 21300000, guid: 0fb94e1bd378afd4b8a994fa1b2d33d5, type: 3}
   theme: {fileID: 11400000, guid: 3f6a1c2e8b7d4e5fa1b2c3d4e5f60401, type: 2}
   audioSet: {fileID: 11400000, guid: 3f6a1c2e8b7d4e5fa1b2c3d4e5f60402, type: 2}
   hapticsEnabled: 1
@@ -358,6 +359,16 @@ MonoBehaviour:
   home: {fileID: 200000006}
   experiments: {fileID: 200000007}
   lab: {fileID: 200000008}
+  homeBackground: {fileID: 21300000, guid: d4fd2a4640f48954aa1fbb407f8db597, type: 3}
+  homeIcons:
+    coin: {fileID: 21300000, guid: 064cd5b909f63f84284b57b86b7dcb11, type: 3}
+    research: {fileID: 21300000, guid: 1821246db13ab3c41b1dba1ec7ce1b68, type: 3}
+    add: {fileID: 21300000, guid: a1a30f24f9e75d84c8895ebb053734e9, type: 3}
+    settings: {fileID: 21300000, guid: a99f61df6c93d02439167b50ff831e01, type: 3}
+    experiments: {fileID: 21300000, guid: 37da3f1d9fae723459b9388d149d2c14, type: 3}
+    lab: {fileID: 21300000, guid: a75df542b7d7e384aad1bb879f67137d, type: 3}
+    daily: {fileID: 21300000, guid: 27a09d88210a39d4795e48e4c7c0eb8b, type: 3}
+    shop: {fileID: 21300000, guid: 6f16995c1b68a7c488bb7953cca38e77, type: 3}
   targetFrameRate: 60
 --- !u!114 &200000006
 MonoBehaviour:

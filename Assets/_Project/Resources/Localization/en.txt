@@ -1,0 +1,138 @@
+# Cure Cells — English string table (fallback language).
+# Format: key = value   (# comments, \n = line break, {0} {1} = values filled in by the game)
+# Every key here must also exist in tr.txt (checked by LocalizationTests).
+
+# ---------------------------------------------------------------- common
+common_ok = GOT IT
+common_close = CLOSE
+common_back = Back
+common_coming_soon = Coming soon
+
+# ---------------------------------------------------------------- navigation tabs
+nav_experiments = EXPERIMENTS
+nav_home = HOME
+nav_lab = LAB
+
+# ---------------------------------------------------------------- home
+home_continue = CONTINUE
+home_begin = BEGIN
+home_view_results = VIEW RESULTS
+home_experiments = Experiments
+home_lab = Lab
+home_daily = Daily
+home_shop = Shop
+home_current_sample = CURRENT SAMPLE
+home_experiment_complete = EXPERIMENT COMPLETE
+home_level = Level {0}
+home_all_cured = All {0} samples cured
+home_new_sample_cured = NEW SAMPLE CURED
+
+# ---------------------------------------------------------------- gameplay
+gameplay_levels = LEVELS
+gameplay_undo = UNDO
+gameplay_restart = RESTART
+gameplay_placed = {0} / {1} placed
+gameplay_level = LEVEL {0}
+gameplay_combo_good = GOOD!
+gameplay_combo_great = GREAT!
+gameplay_combo_perfect = PERFECT!
+
+# ---------------------------------------------------------------- level complete
+level_complete_title = CURE FOUND!
+level_complete_subtitle = All samples contained. The antidote is stable.
+level_complete_research = +{0} RESEARCH
+level_complete_coins = +{0} COINS
+level_complete_next = NEXT LEVEL
+level_complete_finish = FINISH
+
+# ---------------------------------------------------------------- experiments (journal + sample rack)
+experiments_title = EXPERIMENTS
+experiments_subtitle = Your research journal
+experiments_progress = {0} / {1} cured
+experiments_progress_caps = {0} / {1} CURED
+experiments_progress_complete = {0} / {0} CURED  ·  COMPLETE
+experiments_play = PLAY
+experiments_replay = REPLAY
+experiments_locked = LOCKED
+experiments_next = NEXT
+experiments_open = OPEN
+experiments_start = START
+experiments_review = REVIEW
+experiments_all = ALL
+experiments_samples_to_cure = {0} samples to cure
+experiments_soon = SOON
+experiments_arriving_soon = New samples arriving soon
+experiments_numbered = EXPERIMENT {0:00}
+experiments_level_title = LEVEL {0}  ·  {1}
+experiments_level_locked = Sealed — cure Level {0} to unlock
+experiments_level_info = {0} samples  ·  {1}×{2} dish
+experiments_level_info_cured = {0} samples  ·  {1}×{2} dish  ·  cured
+experiments_milestone_cured = {0}  ·  {1} / {1} CURED
+experiments_milestone_home = HOME
+experiments_milestone_lab = LAB
+experiments_milestone_samples = SAMPLES
+
+# ---------------------------------------------------------------- lab
+lab_title = LAB
+lab_upgrade = UPGRADE
+lab_level = LAB LEVEL {0}
+lab_hint = Tap equipment to inspect it
+lab_goal_max = Your lab is fully equipped
+lab_goal_analyzer = Next: upgrade the Microscope to unlock the Analyzer
+lab_goal_level = Next: upgrade the Microscope to reach Lab Level {0}
+lab_equipment_level = Level {0}
+lab_max_level = Max level
+lab_ready = Ready for future research
+lab_ready_caps = READY FOR FUTURE RESEARCH
+lab_microscope = MICROSCOPE
+lab_incubator = INCUBATOR
+lab_analyzer = ANALYZER
+lab_incubator_locked = Complete Experiment 01
+lab_incubator_locked_body = Complete Experiment 01 to wake it up.
+lab_analyzer_locked = Reach Lab Level {0}
+lab_analyzer_locked_body = Reach Lab Level {0} by upgrading the Microscope.
+lab_microscope_max_body = Fully upgraded. A precision instrument for your lab.
+lab_microscope_body = Sharper optics raise your lab to Level {0}.
+lab_microscope_need = Cure more samples to earn Research. {0} to go.
+lab_cost = {0} Research
+lab_unlocked = Unlocked
+lab_dormant = Dormant
+lab_locked = Locked
+lab_upgrade_tag = UPGRADE  {0}
+
+# ---------------------------------------------------------------- boosters (not in the game yet)
+boosters_title = Boosters
+booster_hint = Microscope Hint
+booster_auto_cure = Auto Cure
+
+# ---------------------------------------------------------------- settings
+settings_title = Settings
+settings_music = Music
+settings_sfx = Sound Effects
+settings_haptics = Haptics
+settings_language = Language
+settings_coming_soon = Music, sound and haptics options are coming soon.
+
+# ---------------------------------------------------------------- daily / shop placeholders
+daily_title = Daily Reward
+daily_coming_soon = Come back every day for free Research.\nOpening soon!
+shop_title = Lab Supply Shop
+shop_coming_soon = Cosmetics and lab supplies are on their way.\nOpening soon!
+
+# ---------------------------------------------------------------- content: Experiment 01
+chapter_title_experiment_01 = Experiment 01
+chapter_subtitle_experiment_01 = Virus Samples
+chapter_complete_title_experiment_01 = EXPERIMENT COMPLETE
+chapter_complete_message_experiment_01 = All ten samples are contained. The first vaccine batch is ready for testing.
+level_title_lvl_01 = First Sample
+level_title_lvl_02 = A Little Twist
+level_title_lvl_03 = Culture Mix
+level_title_lvl_04 = Petri Dish
+level_title_lvl_05 = Full Plate
+level_title_lvl_06 = Capsule
+level_title_lvl_07 = Ring Culture
+level_title_lvl_08 = Spiked Strain
+level_title_lvl_09 = Heart Tissue
+level_title_lvl_10 = The Flask
+level_hint_lvl_01 = Drag each sample into the dish
+level_hint_lvl_02 = Tap a sample to rotate it

@@ -68,6 +68,8 @@ namespace CozyLab.Puzzle.Core
         public IReadOnlyList<PieceState> Pieces => _pieces;
         public bool IsSolved { get; private set; }
         public bool CanUndo => !IsSolved && _placementHistory.Count > 0;
+        /// <summary>How many placements can currently be undone. Purely informational (e.g. HUD badge); does not gate Undo itself.</summary>
+        public int UndoCount => _placementHistory.Count;
 
         public event Action<PieceState> PiecePlaced;
         public event Action<PieceState> PieceRemoved;
